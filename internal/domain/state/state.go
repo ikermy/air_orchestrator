@@ -27,12 +27,17 @@ var (
 	RedisDB       int    // REDIS_DB (default: 0)
 
 	// Languages supported
-	ValidLang = map[string]struct{}{
+	validLang = map[string]struct{}{
 		"ru": {},
 		"en": {},
 		"es": {},
 	}
 )
+
+func ValidateLanguage(language string) bool {
+	_, ok := validLang[language]
+	return ok
+}
 
 // CloseExit безопасно закрывает канал Exit (защита от panic при повторном close).
 func CloseExit() {

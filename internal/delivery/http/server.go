@@ -565,6 +565,7 @@ func (w *Web) userRoutes(v1 *gin.RouterGroup) {
 	userData.Use(w.authAllowMiddleware())
 	userData.GET("/data", w.UserData)
 	userData.POST("/timezone", w.UserTimeZone)
+	userData.POST("/language", w.UserLanguage)
 	userData.GET("/details", w.GetUserDetails)
 }
 

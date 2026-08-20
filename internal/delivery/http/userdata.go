@@ -2,6 +2,7 @@ package web
 
 import (
 	"air_orchestrator/internal/config"
+	"air_orchestrator/internal/domain/state"
 	storage "air_orchestrator/internal/infrastructure/storage"
 	"context"
 	"fmt"
@@ -339,6 +340,49 @@ func (w *Web) UserTimeZone(c *gin.Context) {
 	err := w.db.SaveUserTimeZone(userId, requestData.Timezone)
 	if err != nil {
 		logger.Error("'UserTimeZone' Ошибка при сохранении в БД: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{})
+}
+
+// UserLanguage godoc
+// @Summary Устновить Язык уведомлений пользователя
+// @Tags user
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "Язык уведомлений"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Router /user/timezone [post]
+func (w *Web) UserLanguage(c *gin.Context) {
+	userId, ok := getUserID(c)
+	if !ok {
+		return
+	}
+
+	var requestData struct {
+		Language string `json:"language"`
+	}
+
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		logger.Error("'UserLanguage' Ошибка парсинга JSON: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ok = state.ValidateLanguage(requestData.Language)
+	if !ok {
+		logger.Error("Не поддерживаемый язык: %v", requestData.Language)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported language"})
+		return
+	}
+
+	err := w.db.SaveUserLanguage(userId, requestData.Language)
+	if err != nil {
+		logger.Error("'UserLanguage' Ошибка при сохранении в БД: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

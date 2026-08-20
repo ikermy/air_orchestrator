@@ -33,9 +33,13 @@
 ```text
 air_orchestrator
 ├── air_db (MariaDB/MySQL)
+│   └── пользователи, диалоги, конфигурация и прочая зашифрованная информация
 ├── air_redis (Redis)
-├── minio (S3-хранилище)
+│   └── данные сессий и зашифрованный кэш MasterKey
+├── minio (S3 storage)
+│   └── файлы пользователей
 ├── envoy
+│   └── HTTPS/gRPC-Web маршрутизация шлюза и внешнего трафика
 ├── air_tgbot
 ├── air_tguserbot
 ├── air_whatsbot
@@ -46,9 +50,9 @@ air_orchestrator
 └── air_lead-hunter
 
 air-mon.yml
-├── cadvisor
-├── prometheus
-└── grafana
+├── cadvisor ── метрики Docker контейнеров
+├── prometheus ── сборка и хранение метрик
+└── grafana ── визуализация метрик
 ```
 
 Сервисы взаимодействуют с orchestrator через HTTP/gRPC-контракты. Состав подключаемых сервисов определяется окружением и Docker-сетями `air_shared`, `app_internal` и `monitoring_shared`.

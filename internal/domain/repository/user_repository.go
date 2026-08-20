@@ -53,6 +53,7 @@ type UserRepository interface {
 	SaveUserTimeZone(userID uint32, timeZone string) error
 	SetUsersSubscriptionNotified(users []uint32) error
 	GetOrSetUserStorageLimit(userID uint32, delta int64) (uint64, uint64, error)
+	SaveUserLanguage(userID uint32, language string) error
 }
 
 // ModelRepository — операции с AI-моделями пользователей.

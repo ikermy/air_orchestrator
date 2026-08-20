@@ -106,7 +106,6 @@ func (w *Web) verifyTokenAndCheckRateLimit(c *gin.Context, token string) bool {
 // Для GET и DELETE с path-параметрами проверяем сразу
 // Для POST с path-параметрами можно тоже сразу проверять (токен уже в query)
 // Для POST без path-параметров проверяем token в Authorization-header или query (если есть), иначе отложенная проверка
-
 func (w *Web) authAllowMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := extractToken(c)

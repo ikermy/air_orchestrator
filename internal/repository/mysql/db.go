@@ -97,7 +97,8 @@ func (d *DB) CreateUser(name, pass, encEmail, emailHMAC, lang string, demo bool)
 	}
 
 	// Проверяю что lang валидный
-	if _, ok := state.ValidLang[lang]; !ok {
+	ok := state.ValidateLanguage(lang)
+	if !ok {
 		lang = "ru"
 	}
 
@@ -2016,34 +2017,33 @@ func (d *DB) SaveUserTimeZone(userID uint32, timeZone string) error {
 	return nil
 }
 
-func (d *DB) UserTimeZone(userId uint32) (string, error) {
-	if userId == 0 {
-		return "", fmt.Errorf("получены некорректные данные: userId")
+func (d *DB) SaveUserLanguage(userID uint32, language string) error {
+	// Проверяем входные значения
+	if userID == 0 || language == "" {
+		return fmt.Errorf("получены некорректные значения: userId или language пусты")
+	}
+	if len(language) != 2 {
+		return fmt.Errorf("получены некорректные данные language")
 	}
 
+	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	var tz sql.NullString
-	err := d.Conn().QueryRowContext(ctx, "SELECT TimeZone FROM users WHERE Id = ?", userId).Scan(&tz)
+	_, err := d.Conn().ExecContext(ctx,
+		"UPDATE users SET lang = (SELECT id FROM languages WHERE Code=?) WHERE users.Id=?", language, userID)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
-			return "", fmt.Errorf("тайм-аут (%d с) при получении часового пояса пользователя: %w", mode.GetSQLTimeToCancel(), err)
+			return fmt.Errorf("тайм-аут (%d с) при сохранении языка пользователя: %w", mode.GetSQLTimeToCancel(), err)
 		case errors.Is(err, context.Canceled):
-			return "", fmt.Errorf("операция отменена: %w", err)
-		case errors.Is(err, sql.ErrNoRows):
-			return "", fmt.Errorf("пользователь с ID %d не найден", userId)
+			return fmt.Errorf("операция отменена: %w", err)
 		default:
-			return "", fmt.Errorf("ошибка получения часового пояса пользователя: %w", err)
+			return fmt.Errorf("ошибка сохранения языка пользователя: %w", err)
 		}
 	}
 
-	if !tz.Valid {
-		return "", fmt.Errorf("часовой пояс не установлен для пользователя %d", userId)
-	}
-
-	return tz.String, nil
+	return nil
 }
 
 // ============================================================================
