@@ -1,0 +1,30 @@
+# secret
+secrets
+
+# Git metadata
+.git
+.gitignore
+
+# Local secrets
+secret.env
+secret.env.*
+*.env
+cfg.env
+secrets/
+
+# IDE / editor
+.idea/
+.vscode/
+
+# Build output
+bin/
+build/
+dist/
+out/
+
+# Temp / logs
+*.log
+tmp/
+temp/
+profiles/
+

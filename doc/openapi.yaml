@@ -1,0 +1,2329 @@
+﻿openapi: "3.0.3"
+info:
+  title: AiR ORCHESTRATOR API
+  description: |
+    REST API сервиса AiR ORCHESTRATOR. Большинство защищённых маршрутов требуют
+    заголовок `Authorization: Bearer <token>`. WebSocket-маршруты принимают
+    токен через query-параметр `token` или через `Sec-WebSocket-Protocol`.
+  version: "1.0.0"
+
+servers:
+  - url: https://localhost:8443
+    description: Локальная разработка (TLS)
+  - url: http://localhost:8080
+    description: Production (за nginx)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Короткоживущий access-token (STA)
+        confirmed:
+          type: integer
+        disabled:
+          type: integer
+
+    AccessToken:
+      type: object
+      properties:
+        s:
+          type: string
+          description: Новый STA-токен
+
+tags:
+  - name: auth
+    description: Аутентификация, токены, сброс пароля
+  - name: totp
+    description: Двухфакторная аутентификация (TOTP / Google Authenticator)
+  - name: channel
+    description: Пользовательский канал
+  - name: demo
+    description: Демо-режим (без авторизации)
+  - name: widget
+    description: Виджет-режим
+  - name: pay
+    description: Платёжная подсистема
+  - name: dialog
+    description: Диалоги пользователя
+  - name: model
+    description: Управление AI-моделями
+  - name: nota
+    description: Уведомления и настройки
+  - name: notification
+    description: Отправка уведомлений (внешние сервисы)
+  - name: user
+    description: Данные пользователя
+  - name: master-key
+    description: MasterKey — шифрование данных пользователя
+  - name: s3
+    description: Файловое хранилище S3
+  - name: embedding
+    description: Текстовые эмбеддинги (RAG)
+  - name: operators
+    description: Операторы
+  - name: services
+    description: Пользовательские сервисы
+  - name: mcp
+    description: MCP-сервер (Model Context Protocol)
+  - name: crm
+    description: CRM-прокси (AmoCRM)
+  - name: google
+    description: Google OAuth
+  - name: avito
+    description: Avito-интеграция
+  - name: ws
+    description: WebSocket-эндпоинты
+  - name: test-api
+    description: Тестовый API (AI-модель)
+  - name: dev
+    description: Инструменты разработчика / admin
+  - name: system
+    description: Системные эндпоинты (доступность, permit, uid, метрики)
+  - name: misc
+    description: Прочие маршруты
+
+paths:
+
+  # ─────────────── SYSTEM / MISC ───────────────
+  /metrics:
+    get:
+      tags: [system]
+      summary: Prometheus-метрики приложения
+      description: |
+        Экспортирует метрики в формате text/plain (Prometheus exposition format).
+        Не требует авторизации. Рекомендуется закрыть от внешнего доступа на уровне nginx.
+      responses:
+        "200":
+          description: Метрики в формате Prometheus
+          content:
+            text/plain:
+              schema:
+                type: string
+  /system/available/{ch_type}:
+    get:
+      tags: [system]
+      summary: Проверка доступности сервиса
+      parameters:
+        - name: ch_type
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+
+  /system/uid:
+    get:
+      tags: [system]
+      summary: Получение userID для модели (без авторизации, для внутренних сервисов)
+      parameters:
+        - name: uid
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Входной ID пользователя
+      responses:
+        "200":
+          description: OK
+
+  /system/permit:
+    get:
+      tags: [system]
+      summary: Проверка разрешений запуска сервиса
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+        "401":
+          description: Unauthorized
+
+  /subscription:
+    get:
+      tags: [pay]
+      summary: Подписка
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── AUTH ───────────────
+  /auth/check-email:
+    post:
+      tags: [auth]
+      summary: Проверка занятости email и создание промежуточного ключа
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                a:
+                  type: string
+                  description: Email
+                b:
+                  type: integer
+                  format: uint64
+                  description: RespId (идентификатор браузера/сессии)
+      responses:
+        "200":
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email:
+                    type: boolean
+                    description: true — email уже занят
+                  key:
+                    type: string
+                    description: Промежуточный ключ (если email свободен)
+        "429":
+          description: Слишком много запросов
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a, b, c, d]
+              properties:
+                a:
+                  type: integer
+                  format: uint64
+                  description: RespId
+                b:
+                  type: string
+                  description: Имя
+                c:
+                  type: string
+                  description: Email
+                d:
+                  type: string
+                  description: Зашифрованный пароль
+                e:
+                  type: boolean
+                  description: Demo-режим
+                f:
+                  type: string
+                  description: Язык интерфейса
+      responses:
+        "200":
+          description: Пользователь создан, письмо отправлено
+        "400":
+          description: Ошибка входных данных
+        "429":
+          description: Слишком много запросов
+
+  /auth/session-key:
+    post:
+      tags: [auth]
+      summary: Создание промежуточного ключа для шифрования пароля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a]
+              properties:
+                a:
+                  type: integer
+                  format: uint64
+                  description: RespId
+      responses:
+        "200":
+          description: Ключ создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+
+  /auth/reset-password/request:
+    post:
+      tags: [auth]
+      summary: Запрос восстановления пароля (отправляет письмо)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                a:
+                  type: integer
+                  format: uint64
+                  description: RespId
+                b:
+                  type: string
+                  description: Email
+      responses:
+        "200":
+          description: Результат
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  a:
+                    type: boolean
+
+  /auth/reset-password/validate:
+    post:
+      tags: [auth]
+      summary: Проверка токена для сброса пароля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                a:
+                  type: integer
+                  format: uint64
+                  description: RespId
+                b:
+                  type: string
+                  description: Токен из письма
+      responses:
+        "200":
+          description: Токен валиден
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  email:
+                    type: string
+                  token:
+                    type: string
+        "401":
+          description: Токен невалиден
+
+  /auth/reset-password/confirm:
+    post:
+      tags: [auth]
+      summary: Сброс пароля
+      description: |
+        Устанавливает новый пароль по токену из письма.
+
+        **Поведение поля `d` (raw_master_key):**
+        - **Передан** — MasterKey перешифровывается с новым паролем, доступ к зашифрованным данным сохраняется.
+        - **Не передан, и MasterKey был создан** — все зашифрованные данные пользователя безвозвратно удаляются, MasterKey сбрасывается (`NULL`). Пользователь сможет создать новый MasterKey через `POST /user/master-key`.
+        - **Не передан, и MasterKey не создавался** — ничего не происходит, смена пароля выполняется штатно.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a, b, c]
+              properties:
+                a:
+                  type: string
+                  description: JWT access-token из /checkreset
+                b:
+                  type: string
+                  description: Email
+                c:
+                  type: string
+                  description: Новый зашифрованный пароль (AES-CBC)
+                d:
+                  type: string
+                  description: |
+                    Raw MasterKey (base64, опционально).
+                    Если передан — MasterKey перешифровывается с новым паролем.
+                    Если НЕ передан и MasterKey существует — все зашифрованные данные
+                    пользователя будут безвозвратно удалены и MasterKey сброшен.
+      responses:
+        "200":
+          description: Пароль изменён
+        "400":
+          description: Невалидный raw_master_key или ошибка расшифровки пароля
+        "401":
+          description: Токен невалиден
+        "429":
+          description: Слишком много запросов
+
+  /auth/email/confirm:
+    get:
+      tags: [auth]
+      summary: Подтверждение email-адреса (переход по ссылке из письма)
+      parameters:
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Токен подтверждения
+      responses:
+        "302":
+          description: Редирект на главную страницу с результатом
+
+  /auth/token/refresh:
+    get:
+      tags: [auth]
+      summary: Обновление access-token на основе refresh-token из cookie
+      responses:
+        "200":
+          description: Новый STA-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessToken"
+        "401":
+          description: Невалидный или отсутствующий refresh-token
+
+  /auth/token/validate:
+    get:
+      tags: [auth]
+      summary: Валидация access-token
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Токен валиден
+        "401":
+          description: Токен невалиден
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Авторизация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a, b, c]
+              properties:
+                a:
+                  type: integer
+                  format: uint64
+                  description: RespId
+                b:
+                  type: string
+                  description: Email
+                c:
+                  type: string
+                  description: Зашифрованный пароль
+                d:
+                  type: boolean
+                  description: Авто-вход (refresh-token в cookie)
+      responses:
+        "200":
+          description: Токен выдан или требуется второй фактор
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/TokenResponse"
+                  - type: object
+                    description: TOTP required
+                    properties:
+                      status:
+                        type: string
+                        example: totp_required
+                      totp_token:
+                        type: string
+        "401":
+          description: Неверные учётные данные
+
+  # ─────────────── TOTP ───────────────
+  /totp/setup:
+    post:
+      tags: [totp]
+      summary: Генерация TOTP secret и URI QR-кода
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: URI для сканирования QR
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: otpauth:// URI
+                  enabled:
+                    type: boolean
+                    example: false
+        "401":
+          description: Unauthorized
+
+  /totp/confirm:
+    post:
+      tags: [totp]
+      summary: Активация TOTP после проверки 6-значного кода
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: 6-значный TOTP-код из приложения
+                  example: "123456"
+      responses:
+        "200":
+          description: TOTP активирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    example: true
+        "400":
+          description: TOTP не настроен или уже включён
+        "401":
+          description: Неверный код
+
+  /totp:
+    delete:
+      tags: [totp]
+      summary: Отключение TOTP с проверкой 6-значного одноразового кода
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: 6-значный TOTP-код из приложения
+                  example: "123456"
+      responses:
+        "200":
+          description: TOTP отключён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    example: false
+        "400":
+          description: TOTP не включён
+        "401":
+          description: Неверный код
+
+  /auth/totp:
+    post:
+      tags: [totp]
+      summary: Второй шаг входа — ввод TOTP-кода
+      description: |
+        Вызывается после POST /auth, если сервер вернул `status: totp_required`.
+        Принимает временный `totp_token` и 6-значный код из приложения.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [totp_token, code]
+              properties:
+                totp_token:
+                  type: string
+                  description: Временный токен из ответа POST /auth
+                code:
+                  type: string
+                  description: 6-значный TOTP-код
+                  example: "123456"
+      responses:
+        "200":
+          description: Авторизация выполнена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Истёкший токен или неверный код
+
+  # ─────────────── CHANNEL ───────────────
+  /channel/name:
+    get:
+      tags: [channel]
+      summary: Получить имя канала
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /channel:
+    get:
+      tags: [channel]
+      summary: Читать данные канала
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+    post:
+      tags: [channel]
+      summary: Сохранить данные канала
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags: [channel]
+      summary: Удалить канал
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── DEMO ───────────────
+  /demo/exam:
+    post:
+      tags: [demo]
+      summary: Демо-экзамен (проверка конфигурации)
+      responses:
+        "200":
+          description: OK
+
+  /demo/username:
+    get:
+      tags: [demo]
+      summary: Получить имя демо-пользователя
+      responses:
+        "200":
+          description: OK
+
+  /demo/dialog:
+    get:
+      tags: [demo]
+      summary: Прочитать демо-диалог
+      responses:
+        "200":
+          description: OK
+
+  /demo/data:
+    post:
+      tags: [demo]
+      summary: Отправить данные в демо
+      responses:
+        "200":
+          description: OK
+
+  /demo/events:
+    get:
+      tags: [demo]
+      summary: SSE/события демо-режима
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── TEST API ───────────────
+  /api/test/start:
+    get:
+      tags: [test-api]
+      summary: Запуск тестовой сессии AI-модели
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /api/test/ask:
+    post:
+      tags: [test-api]
+      summary: Отправить вопрос тестовой модели
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /api/test/stop:
+    delete:
+      tags: [test-api]
+      summary: Остановить тестовую сессию
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── WIDGET ───────────────
+  /widget/code:
+    get:
+      tags: [widget]
+      summary: Получить код виджета
+      responses:
+        "200":
+          description: OK
+
+  /widget/exam:
+    post:
+      tags: [widget]
+      summary: Проверка виджета
+      responses:
+        "200":
+          description: OK
+
+  /widget/validate:
+    get:
+      tags: [widget]
+      summary: Валидация токена виджета
+      responses:
+        "200":
+          description: OK
+
+  /widget/refresh:
+    post:
+      tags: [widget]
+      summary: Обновить токен виджета
+      responses:
+        "200":
+          description: OK
+
+  /widget/username:
+    get:
+      tags: [widget]
+      summary: Получить имя пользователя виджета
+      responses:
+        "200":
+          description: OK
+
+  /widget/dialog:
+    get:
+      tags: [widget]
+      summary: Прочитать диалог виджета
+      responses:
+        "200":
+          description: OK
+
+  /widget/data:
+    post:
+      tags: [widget]
+      summary: Отправить данные через виджет
+      responses:
+        "200":
+          description: OK
+
+  /widget/events:
+    get:
+      tags: [widget]
+      summary: SSE/события виджета
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── PAY ───────────────
+  /pay/tariff:
+    get:
+      tags: [pay]
+      summary: Получить тарифы
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /pay/currencies:
+    get:
+      tags: [pay]
+      summary: Получить доступные валюты
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /pay/create-payment:
+    post:
+      tags: [pay]
+      summary: Создать платёж ByBit
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /pay/payment-status-stream:
+    get:
+      tags: [pay]
+      summary: SSE-поток статуса платежа
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Server-Sent Events stream
+
+  # ─────────────── DIALOG ───────────────
+  /dialog/all:
+    get:
+      tags: [dialog]
+      summary: Получить все диалоги пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /dialog/view/{id}:
+    post:
+      tags: [dialog]
+      summary: Получить конкретный диалог
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+
+  /dialog/{id}:
+    delete:
+      tags: [dialog]
+      summary: Удалить диалог по ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+
+  /dialog/list:
+    delete:
+      tags: [dialog]
+      summary: Удалить список диалогов
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── DETAILS ───────────────
+  /user/details:
+    get:
+      tags: [user]
+      summary: Получить детальные данные пользователя (статистика)
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── PROVIDER ───────────────
+  /provider/available:
+    get:
+      tags: [model]
+      summary: Список провайдеров с установленным и без API-ключа для данного пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: array
+                    items:
+                      type: string
+                    description: Провайдеры с API-ключом (openai, mistral, ...)
+                  unavailable:
+                    type: array
+                    items:
+                      type: string
+                    description: Провайдеры без API-ключа
+        "401":
+          description: Unauthorized
+
+  /provider/revoke:
+    delete:
+      tags: [model]
+      summary: Отозвать API-ключ пользователя для выбранного провайдера
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: providerStr
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Код провайдера, например openai или mistral
+      responses:
+        "200":
+          description: API-ключ отозван
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restart:
+                    type: boolean
+                    description: Нужно ли перезапустить активную модель после отзыва ключа
+        "400":
+          description: Не указан providerStr или передан невалидный provider
+        "401":
+          description: Unauthorized
+        "500":
+          description: Внутренняя ошибка
+
+  /provider/setkey:
+    post:
+      tags: [model]
+      summary: Установить API-ключ пользователя для выбранного провайдера
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: providerStr
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Код провайдера, например openai или mistral
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+                  description: API-ключ пользователя для выбранного провайдера
+      responses:
+        "200":
+          description: API-ключ сохранён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restart:
+                    type: boolean
+                    description: Нужно ли перезапустить активную модель после установки ключа
+        "400":
+          description: Ошибка парсинга JSON, не указан providerStr или передан невалидный provider
+        "401":
+          description: Unauthorized
+        "500":
+          description: Внутренняя ошибка
+
+  # ─────────────── MODEL ───────────────
+  /model/demo:
+    get:
+      tags: [model]
+      summary: Проверить статус демо-пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /model:
+    get:
+      tags: [model]
+      summary: Получить модели пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /model/upfile:
+    post:
+      tags: [model]
+      summary: Загрузить файл (Mistral)
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /model/delfile:
+    post:
+      tags: [model]
+      summary: Удалить файл (Mistral)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /model/addfile:
+    post:
+      tags: [model]
+      summary: Добавить файл к модели (Mistral)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /model/create:
+    post:
+      tags: [model]
+      summary: Создать новую модель
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /model/update:
+    post:
+      tags: [model]
+      summary: Обновить модель
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /model/gpt:
+    get:
+      tags: [model]
+      summary: Получить доступные GPT-провайдеры
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /model/setactive:
+    get:
+      tags: [model]
+      summary: Переключить модель в статус активной
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── NOTA ───────────────
+  /nota/mail:
+    get:
+      tags: [nota]
+      summary: Получить email уведомлений
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /nota:
+    get:
+      tags: [nota]
+      summary: Получить настройки уведомлений
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+    post:
+      tags: [nota]
+      summary: Сохранить настройки уведомлений
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags: [nota]
+      summary: Удалить канал уведомлений
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /nota/code:
+    post:
+      tags: [nota]
+      summary: Отправить код верификации
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /nota/events:
+    post:
+      tags: [nota]
+      summary: Сохранить события уведомлений
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── NOTIFICATION (outbound) ───────────────
+  /notification/mail:
+    post:
+      tags: [notification]
+      summary: Отправить email-уведомление
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /notification/telega:
+    post:
+      tags: [notification]
+      summary: Отправить Telegram-уведомление
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /notification/instant:
+    post:
+      tags: [notification]
+      summary: Отправить мгновенное уведомление
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── USER ───────────────
+  /user/data:
+    get:
+      tags: [user]
+      summary: Получить данные пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /user/timezone:
+    post:
+      tags: [user]
+      summary: Установить часовой пояс пользователя
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timezone:
+                  type: string
+                  example: "Europe/Moscow"
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── MASTER KEY ───────────────
+  # POST /user/master-key удалён — создание MasterKey перенесено на WebSocket /ws/create-master-key
+
+  /auth/rewrap-master-key:
+    post:
+      tags: [masterkey]
+      summary: Перешифровать MasterKey с новым паролем. Если raw key не передан — удаляет зашифрованные данные.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a, c]
+              properties:
+                a:
+                  type: integer
+                  format: uint64
+                  description: respId из POST /key (свежий, TTL 30 сек)
+                b:
+                  type: string
+                  description: Raw MasterKey base64 (опционально). Если не передан — зашифрованные данные удаляются, MasterKey сбрасывается в NULL
+                c:
+                  type: string
+                  description: Новый пароль AES-CBC
+      responses:
+        "200":
+          description: MasterKey перешифрован (или сброшен если b не передан)
+        "400":
+          description: Невалидный raw_master_key или ошибка расшифровки
+        "401":
+          description: Unauthorized
+        "500":
+          description: Внутренняя ошибка
+
+  /auth/verify-password:
+    post:
+      tags: [masterkey]
+      summary: Проверить пароль пользователя против сохранённого хеша в БД.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a, b]
+              properties:
+                a:
+                  type: integer
+                  format: uint64
+                  description: respId из POST /key (свежий, TTL 30 сек)
+                b:
+                  type: string
+                  description: Пароль AES-CBC
+      responses:
+        "200":
+          description: Пароль верный
+        "400":
+          description: Ошибка расшифровки пароля
+        "401":
+          description: Неверный пароль или невалидный токен
+        "500":
+          description: Внутренняя ошибка
+
+  # ─────────────── S3 ───────────────
+  /user-files/{id}/{filename}:
+    get:
+      tags: [s3]
+      summary: Публичная раздача файла по закодированному ID (ссылка из MCP)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Файл
+        "404":
+          description: Не найден
+
+  /user-files/upload:
+    post:
+      tags: [s3]
+      summary: Загрузить файлы в S3
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /user-files/files:
+    get:
+      tags: [s3]
+      summary: Список файлов пользователя в S3
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /user-files/delete:
+    post:
+      tags: [s3]
+      summary: Удалить файл из S3
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename:
+                  type: string
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── EMBEDDING ───────────────
+  /embedding/upload:
+    post:
+      tags: [embedding]
+      summary: Загрузить текст для эмбеддингов (RAG)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /embedding/list:
+    get:
+      tags: [embedding]
+      summary: Получить список всех документов пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /embedding/{id}:
+    delete:
+      tags: [embedding]
+      summary: Удалить документ по ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── OPERATORS ───────────────
+  /operators:
+    get:
+      tags: [operators]
+      summary: Список операторов
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+    post:
+      tags: [operators]
+      summary: Сохранить операторов
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── SERVICES ───────────────
+  /services-add:
+    post:
+      tags: [services]
+      summary: Создать сервис для пользователя
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /services-delete:
+    delete:
+      tags: [services]
+      summary: Удалить сервис пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /services-list:
+    get:
+      tags: [services]
+      summary: Получить список доступных сервисов
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /services/proxy/{path}:
+    x-summary: Универсальный прокси для сервисных маршрутов
+    get:
+      tags: [services]
+      summary: "Прокси GET /services/proxy/*"
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── MCP ───────────────
+  /mcp:
+    post:
+      tags: [mcp]
+      summary: MCP Streamable HTTP transport (2025-03-26)
+      description: |
+        Аутентификация через заголовок `X-Session-ID: "userId:providerType"`.
+        Реализует протокол Model Context Protocol.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: MCP response
+
+  # ─────────────── CRM ───────────────
+  /crm/health:
+    get:
+      tags: [crm]
+      summary: Проверка доступности CRM-сервиса
+      responses:
+        "200":
+          description: OK
+
+  /crm/oauth/amocrm/callback:
+    get:
+      tags: [crm]
+      summary: OAuth callback от AmoCRM
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+
+  /crm/api/{path}:
+    x-summary: Прокси защищённых CRM API запросов
+    get:
+      tags: [crm]
+      summary: "CRM API прокси (GET)"
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+    post:
+      tags: [crm]
+      summary: "CRM API прокси (POST)"
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── GOOGLE OAUTH ───────────────
+  /google/oauth/callback:
+    get:
+      tags: [google]
+      summary: Публичный callback Google OAuth
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+
+  /google/oauth/url:
+    get:
+      tags: [google]
+      summary: Получить URL для OAuth-авторизации Google
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: model_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: URL авторизации
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+
+  /google/token/status:
+    get:
+      tags: [google]
+      summary: Статус Google-токена для модели
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: model_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+
+  /google/token/revoke:
+    delete:
+      tags: [google]
+      summary: Отозвать Google-токен для модели
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: model_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── AVITO ───────────────
+  /avito/available:
+    get:
+      tags: [avito]
+      summary: Проверка доступности Avito-интеграции
+      responses:
+        "200":
+          description: OK
+
+  /avito/auth/callback:
+    get:
+      tags: [avito]
+      summary: OAuth callback от Avito
+      responses:
+        "200":
+          description: OK
+
+  /avito/webhook:
+    post:
+      tags: [avito]
+      summary: Webhook от Avito
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /avito/status:
+    get:
+      tags: [avito]
+      summary: Статус Avito-интеграции
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /avito/auth/url:
+    post:
+      tags: [avito]
+      summary: Сгенерировать URL авторизации Avito
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+
+  /avito/disconnect:
+    post:
+      tags: [avito]
+      summary: Отключить Avito-интеграцию
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /avito/chats:
+    get:
+      tags: [avito]
+      summary: Получить чаты Avito
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /avito/subscriptions:
+    get:
+      tags: [avito]
+      summary: Список webhook-подписок Avito
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /avito/subscribe:
+    post:
+      tags: [avito]
+      summary: Подписаться на webhook Avito
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  /avito/unsubscribe:
+    post:
+      tags: [avito]
+      summary: Отписаться от webhook Avito
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+
+  # ─────────────── WEBSOCKETS ───────────────
+  /ws/create-master-key:
+    get:
+      tags: [ws, master-key]
+      summary: "WebSocket: создание MasterKey пользователя"
+      description: |
+        Создаёт 32-байтовый MasterKey (PBKDF2 + AES-256-GCM), шифрует им
+        существующие API-ключи и возвращает raw key **один раз**.
+
+        **Аутентификация:** Bearer-токен через `Sec-WebSocket-Protocol` или `?token=`.
+
+        **Query-параметры:**
+        - `respId` — свежий respId из `POST /auth/session-key` (TTL 30 сек)
+        - `pass` — пароль пользователя, зашифрованный AES-CBC (как при логине)
+
+        **Сообщения сервера (JSON):**
+        ```
+        { "type": "progress", "message": "🔄 Проверка MasterKey..." }
+        { "type": "progress", "message": "🔐 Расшифровка пароля..." }
+        { "type": "progress", "message": "🔐 Генерация MasterKey..." }
+        { "type": "progress", "message": "🔐 Шифрование API-ключей..." }
+        { "type": "success",  "message": "✅ MasterKey создан и данные зашифрованы",
+          "data": { "raw_master_key": "<base64>", "warning": "Сохраните этот ключ..." } }
+        { "type": "error",    "message": "❌ <описание ошибки>" }
+        ```
+
+        После `success` или `error` сервер закрывает соединение (`CloseNormalClosure`).
+
+        **Ошибки (через сообщение type=error):**
+        - Отсутствуют параметры `respId` / `pass`
+        - Некорректный формат `respId`
+        - MasterKey уже существует (409-семантика)
+        - Ошибка расшифровки пароля (истёк TTL / неверный ключ)
+        - Неверный пароль
+        - Внутренняя ошибка сервера
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: respId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: uint64
+          description: respId из POST /auth/session-key (TTL 30 сек)
+        - name: pass
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Пароль пользователя, зашифрованный AES-CBC
+      responses:
+        "101":
+          description: WebSocket Upgrade — соединение установлено
+
+  /ws/instant:
+    get:
+      tags: [ws]
+      summary: "WebSocket: мгновенные сообщения"
+      description: Токен передаётся через `Sec-WebSocket-Protocol` или query `?token=`
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/log:
+    get:
+      tags: [ws]
+      summary: "WebSocket: стриминг логов"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/delete-model:
+    get:
+      tags: [ws]
+      summary: "WebSocket: удаление модели"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/deleteall:
+    get:
+      tags: [ws]
+      summary: "WebSocket: удаление всех данных пользователя"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/tgauth:
+    get:
+      tags: [ws]
+      summary: "WebSocket: добавление Telegram Access Key (сервисный)"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/waauth:
+    get:
+      tags: [ws]
+      summary: "WebSocket: добавление WhatsApp Access Key (сервисный)"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/srv_events:
+    get:
+      tags: [ws]
+      summary: "WebSocket: события сервисного бота"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/start:
+    get:
+      tags: [ws]
+      summary: "WebSocket: запуск поиска лидов"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/restart:
+    get:
+      tags: [ws]
+      summary: "WebSocket: перезапуск активных каналов пользователя"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/tguser:
+    get:
+      tags: [ws]
+      summary: "WebSocket: авторизация Telegram-пользователя"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/tguser/contacts:
+    get:
+      tags: [ws]
+      summary: "WebSocket: контакты Telegram-аккаунта"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/whats:
+    get:
+      tags: [ws]
+      summary: "WebSocket: авторизация WhatsApp-пользователя"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/whats/contacts:
+    get:
+      tags: [ws]
+      summary: "WebSocket: контакты WhatsApp-аккаунта"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/test-model:
+    get:
+      tags: [ws, test-api]
+      summary: "WebSocket: текстовые ответы тестовой AI-модели"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  /ws/test-realtime:
+    get:
+      tags: [ws, test-api]
+      summary: "WebSocket: голосовые ответы (OpenAI Realtime API)"
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: WebSocket Upgrade
+
+  # ─────────────── DEV / ADMIN ───────────────
+  # Все маршруты /dev требуют JWT-токена администратора в теле запроса (поле "token").
+  # Проверка прав выполняется внутри каждого хендлера через checkUserDev.
+
+  /dev/getdata:
+    post:
+      tags: [dev]
+      summary: Получить текущие операционные настройки
+      description: |
+        Возвращает email рассылки, Google OAuth Client ID, имя Telegram-бота
+        и дату создания текущего session key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email:
+                    type: string
+                  google_id:
+                    type: string
+                  bot_name:
+                    type: string
+                  session_created:
+                    type: string
+                    format: date-time
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав (не администратор)
+
+  /dev/setdistribmail:
+    post:
+      tags: [dev]
+      summary: Установить SMTP-настройки рассылки
+      description: |
+        Сохраняет smtp.mail, smtp.host, smtp.port, smtp.pass в app_config (зашифровано).
+        Пароль передаётся зашифрованным через сессионный ключ (AES-CBC).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, resp_id, mail, pass, host, port]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+                resp_id:
+                  type: integer
+                  format: uint64
+                  description: RespId из POST /auth/session-key
+                mail:
+                  type: string
+                  description: Email отправителя
+                pass:
+                  type: string
+                  description: Зашифрованный пароль SMTP (AES-CBC)
+                host:
+                  type: string
+                  description: SMTP-хост
+                port:
+                  type: string
+                  description: SMTP-порт
+      responses:
+        "200":
+          description: SMTP настройки сохранены
+        "400":
+          description: Ошибка парсинга или расшифровки пароля
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав
+
+  /dev/setgauth:
+    post:
+      tags: [dev]
+      summary: Установить Google OAuth настройки
+      description: |
+        Сохраняет google_oauth.redirect_uri, google_oauth.client_id,
+        google_oauth.client_secret в app_config (зашифровано).
+        ClientSecret передаётся зашифрованным через сессионный ключ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, resp_id, url, id, sec]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+                resp_id:
+                  type: integer
+                  format: uint64
+                  description: RespId из POST /auth/session-key
+                url:
+                  type: string
+                  description: Google OAuth Redirect URI
+                id:
+                  type: string
+                  description: Google Client ID
+                sec:
+                  type: string
+                  description: Зашифрованный Google Client Secret (AES-CBC)
+      responses:
+        "200":
+          description: Google OAuth настройки сохранены
+        "400":
+          description: Ошибка парсинга или расшифровки секрета
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав
+
+  /dev/setcarpintero:
+    post:
+      tags: [dev]
+      summary: Установить настройки Telegram-бота (Carpintero)
+      description: |
+        Сохраняет tg.token, tg.bot, tg.id в app_config (зашифровано).
+        Bot ID извлекается автоматически из токена (часть до первого `:`)
+        BotToken передаётся зашифрованным через сессионный ключ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, resp_id, bot-token, bot-name]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+                resp_id:
+                  type: integer
+                  format: uint64
+                  description: RespId из POST /auth/session-key
+                bot-token:
+                  type: string
+                  description: Зашифрованный токен Telegram-бота формата "ID:SECRET" (AES-CBC)
+                bot-name:
+                  type: string
+                  description: Имя бота (без @)
+      responses:
+        "200":
+          description: Telegram-бот настроен
+        "400":
+          description: Ошибка парсинга или расшифровки токена
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав
+
+  /dev/setsessionkey:
+    post:
+      tags: [dev]
+      summary: Сгенерировать новый JWT session key
+      description: |
+        Сбрасывает auth.session и auth.created в app_config.
+        При следующем запуске LoadOrInitKey генерирует новый JWT-ключ.
+        Все существующие JWT становятся невалидными.
+        auth.email_key НЕ затрагивается — хеши email пользователей сохраняются.
+        После сброса приложение автоматически перезапускается.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+      responses:
+        "200":
+          description: Session key сброшен, приложение перезапускается
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав
+
+  /dev/checksettings:
+    post:
+      tags: [dev]
+      summary: Проверить наличие ключевых конфигураций
+      description: |
+        Возвращает true/false для каждой группы настроек:
+        smtp (smtp.mail), google_oauth (google_oauth.client_id), carpintero (tg.token).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+      responses:
+        "200":
+          description: Статус конфигураций
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  smtp:
+                    type: boolean
+                    description: true — smtp.mail настроен
+                  google_oauth:
+                    type: boolean
+                    description: true — google_oauth.client_id настроен
+                  carpintero:
+                    type: boolean
+                    description: true — tg.token настроен
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав
+
+  /dev/getsvckey:
+    post:
+      tags: [dev]
+      summary: Получить текущий gRPC service key
+      description: |
+        Возвращает расшифрованное значение svc.service_key из app_config.
+        Используется если администратор потерял ключ и не хочет генерировать новый.
+        Ключ предназначен для монтирования в микросервисы через Docker secrets.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+      responses:
+        "200":
+          description: Текущий service key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service_key:
+                    type: string
+                    description: Hex-строка сервисного ключа (64 символа)
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав
+        "404":
+          description: Ключ не настроен — используйте POST /dev/generatesvckey
+
+  /dev/generatesvckey:
+    post:
+      tags: [dev]
+      summary: Сгенерировать новый gRPC service key
+      description: |
+        Генерирует новый случайный 32-байтный hex-ключ, сохраняет в app_config
+        под ключом `svc.service_key` (зашифровано APP_MASTER_KEY).
+
+        Возвращает plaintext ключ **один раз** — администратор должен сохранить его
+        в файл `secrets/service_key.txt` каждого микросервиса.
+
+        В `docker-compose.yml` микросервиса:
+        ```
+        SERVICE_KEY_FILE=/run/secrets/service_key.txt
+        ```
+
+        После генерации приложение автоматически перезапускается, чтобы gRPC-сервер
+        стартовал с новым ключом. Микросервисы также необходимо перезапустить.
+
+        Повторно получить plaintext можно через POST /dev/getsvckey.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: JWT access-token администратора
+      responses:
+        "200":
+          description: Новый service key сгенерирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service_key:
+                    type: string
+                    description: Plaintext hex-ключ (64 символа). Сохраните — более не будет показан в явном виде.
+                    example: "a3f1...64hex...c9b2"
+                  note:
+                    type: string
+                    description: Инструкция по сохранению ключа
+        "401":
+          description: Невалидный токен
+        "403":
+          description: Недостаточно прав
+        "500":
+          description: Ошибка генерации или сохранения ключа
+
+  # ─────────────── gRPC ConfigService ───────────────
+  # Описание gRPC-сервиса (не HTTP): порт задаётся через GRPC_PORT (по умолчанию 50051).
+  # Транспорт: TLS. Авторизация: метаданные "x-service-key" = SERVICE_KEY_FILE.
+  # Proto-файл: internal/delivery/grpc/proto/svc_config.proto
+  #
+  # rpc GetBotConfig(GetBotConfigRequest) returns (BotConfigResponse)
+  #   — возвращает расшифрованные tg.token, tg.bot, tg.id из app_config.
+  #   Ключ активируется через POST /dev/generatesvckey.

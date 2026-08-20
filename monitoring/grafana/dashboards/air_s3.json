@@ -1,0 +1,54 @@
+{
+  "title": "Air S3 (MinIO)",
+  "uid": "air-s3-minio",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "tags": ["Air S3", "MinIO"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "MinIO Up",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "up{job=\"minio\"}", "legendFormat": "up"}]
+    },
+    {
+      "id": 2,
+      "title": "Usable Capacity",
+      "type": "gauge",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}},
+      "targets": [{"expr": "100 * (1 - sum(minio_cluster_capacity_usable_free_bytes) / sum(minio_cluster_capacity_usable_total_bytes))", "legendFormat": "used"}]
+    },
+    {
+      "id": 3,
+      "title": "S3 Requests",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "sum(rate(minio_s3_requests_total[5m])) by (api)", "legendFormat": "{{api}}"}]
+    },
+    {
+      "id": 4,
+      "title": "S3 5xx Errors",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{"expr": "sum(rate(minio_s3_requests_5xx_errors_total[5m])) by (api)", "legendFormat": "{{api}}"}]
+    },
+    {
+      "id": 5,
+      "title": "Free Capacity",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "targets": [{"expr": "sum(minio_cluster_capacity_usable_free_bytes)", "legendFormat": "free"}]
+    },
+    {
+      "id": 6,
+      "title": "MinIO Process Memory",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "targets": [{"expr": "sum(minio_node_process_resident_memory_bytes)", "legendFormat": "resident memory"}]
+    }
+  ]
+}

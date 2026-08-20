@@ -1,0 +1,199 @@
+{
+  "title": "TgUserBot",
+  "uid": "tguserbot-main",
+  "schemaVersion": 39,
+  "refresh": "15s",
+  "tags": ["tguserbot"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "TgUserBot Up",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{
+        "expr": "up{job=\"tguserbot\"}",
+        "legendFormat": "up"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "HTTP RPS",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_http_requests_total[5m]))",
+        "legendFormat": "RPS"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Active Sessions",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{
+        "expr": "sum(air_tguserbot_active_sessions)",
+        "legendFormat": "sessions"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Auth Sessions",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{
+        "expr": "sum(air_tguserbot_auth_sessions)",
+        "legendFormat": "auth"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "HTTP Requests by Route",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_http_requests_total[5m])) by (route, status)",
+        "legendFormat": "{{route}} {{status}}"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "HTTP Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(air_tguserbot_http_request_duration_seconds_bucket[5m])) by (le, route))",
+        "legendFormat": "{{route}}"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "Messages Received",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_messages_received_total[5m])) by (bot_id, message_type)",
+        "legendFormat": "bot {{bot_id}} {{message_type}}"
+      }]
+    },
+    {
+      "id": 8,
+      "title": "Messages Processed",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_messages_processed_total[5m])) by (bot_id, status)",
+        "legendFormat": "bot {{bot_id}} {{status}}"
+      }]
+    },
+    {
+      "id": 9,
+      "title": "Messages Ignored",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_messages_ignored_total[5m])) by (bot_id, reason)",
+        "legendFormat": "bot {{bot_id}} {{reason}}"
+      }]
+    },
+    {
+      "id": 10,
+      "title": "Bot Lifecycle Events",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_bot_lifecycle_total[5m])) by (bot_id, action, status)",
+        "legendFormat": "bot {{bot_id}} {{action}} {{status}}"
+      }]
+    },
+    {
+      "id": 11,
+      "title": "CRM Requests",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_crm_requests_total[5m])) by (bot_id, direction, status)",
+        "legendFormat": "bot {{bot_id}} {{direction}} {{status}}"
+      }]
+    },
+    {
+      "id": 12,
+      "title": "CRM Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(air_tguserbot_crm_request_duration_seconds_bucket[5m])) by (le, bot_id, direction))",
+        "legendFormat": "bot {{bot_id}} {{direction}}"
+      }]
+    },
+    {
+      "id": 13,
+      "title": "TgUserBot Send",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_tguserbot_send_total[5m])) by (bot_id, status)",
+        "legendFormat": "bot {{bot_id}} {{status}}"
+      }]
+    },
+    {
+      "id": 14,
+      "title": "Reconnects",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_reconnects_total[5m])) by (bot_id, result)",
+        "legendFormat": "bot {{bot_id}} {{result}}"
+      }]
+    },
+    {
+      "id": 15,
+      "title": "Decrypt Errors",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_decrypt_errors_total[5m])) by (bot_id, category)",
+        "legendFormat": "bot {{bot_id}} {{category}}"
+      }]
+    },
+    {
+      "id": 16,
+      "title": "Active Dialogs",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
+      "targets": [{
+        "expr": "sum(air_tguserbot_active_dialogs) by (bot_id)",
+        "legendFormat": "bot {{bot_id}}"
+      }]
+    },
+    {
+      "id": 17,
+      "title": "Operator Mode Dialogs",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 52},
+      "targets": [{
+        "expr": "sum(air_tguserbot_operator_mode_dialogs) by (bot_id)",
+        "legendFormat": "bot {{bot_id}}"
+      }]
+    },
+    {
+      "id": 18,
+      "title": "Call Lifecycle Events",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 52},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_call_lifecycle_total[5m])) by (bot_id, direction, action, status)",
+        "legendFormat": "bot {{bot_id}} {{direction}} {{action}} {{status}}"
+      }]
+    },
+    {
+      "id": 19,
+      "title": "WebSocket Events",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 60},
+      "targets": [{
+        "expr": "sum(rate(air_tguserbot_websocket_events_total[5m])) by (route, status)",
+        "legendFormat": "{{route}} {{status}}"
+      }]
+    }
+  ]
+}

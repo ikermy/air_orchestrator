@@ -1,0 +1,21 @@
+services:
+  air_db:
+    image: mariadb:13.0.1-rc
+    container_name: air_db
+    restart: unless-stopped
+    ports:
+      - "3307:3306"  # <--- Проброс порта делает Envoy
+    environment:
+      - MYSQL_DATABASE=air
+      - MYSQL_USER=agent
+      - MYSQL_PASSWORD=123456
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql_root_password.txt
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+      - ./secrets:/run/secrets:ro
+    networks:
+      - air_shared
+
+networks:
+  air_shared:
+    external: true

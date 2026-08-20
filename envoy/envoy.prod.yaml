@@ -1,0 +1,376 @@
+# =============================================================================
+# Envoy — конфигурация для продакшена
+# =============================================================================
+#
+# Роль:
+#   Единая точка TLS-терминации с автоматическим обновлением сертификатов
+#   через Let's Encrypt / certbot.
+#
+# Listeners:
+#   :80    — HTTP: пропускает ACME challenge (/.well-known/acme-challenge/)
+#             к acme_http (nginx), всё остальное → 301 redirect на HTTPS
+#   :443   — HTTPS → plain HTTP → airorc:8080
+#             Сертификат: /etc/letsencrypt/live/DOMAIN/fullchain.pem
+#             watched_directory — Envoy автоматически перезагружает сертификат
+#             после обновления certbot (без рестарта контейнера)
+#   :50443 — gRPC TLS → plain gRPC → airorc:50051
+#             Тот же сертификат, то же watched_directory
+#   :9901  — Envoy Admin API, привязан только к 127.0.0.1 (не публикуется наружу)
+#
+# Переменные подстановки:
+#   DOMAIN_PLACEHOLDER заменяется на реальный домен через sed в docker-compose.prod.yml.
+#   Пример: sed 's/DOMAIN_PLACEHOLDER/example.com/g' envoy.prod.yaml > /tmp/envoy.yaml
+#
+# Сертификаты монтируются из named volume certbot_certs → /etc/letsencrypt:ro
+# ACME webroot монтируется из named volume certbot_www   → /var/www/certbot:ro
+# =============================================================================
+
+static_resources:
+
+  listeners:
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Listener 1: HTTP (:80)
+    #   /.well-known/acme-challenge/* → acme_http (nginx, webroot certbot)
+    #   /*                            → 301 HTTPS redirect
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: http_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 80
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: AUTO
+                use_remote_address: true
+                route_config:
+                  name: http_route
+                  virtual_hosts:
+                    - name: http
+                      domains: ["*"]
+                      routes:
+                        # ACME challenge — certbot пишет сюда, acme_http (nginx) отдаёт
+                        - match:
+                            prefix: "/.well-known/acme-challenge/"
+                          route:
+                            cluster: acme_http
+                            timeout: 10s
+                        # Всё остальное — редирект на HTTPS (301)
+                        - match:
+                            prefix: "/"
+                          redirect:
+                            https_redirect: true
+                            response_code: MOVED_PERMANENTLY
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Listener 2: HTTPS (:443) → plain HTTP → airorc:8080
+    #
+    # watched_directory: Envoy отслеживает директорию через inotify.
+    # После certbot renew обновляет симлинки в live/DOMAIN/ → Envoy сразу
+    # перезагружает сертификат без рестарта контейнера.
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: https_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 443
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem
+                      # Автоматическая перезагрузка при обновлении сертификата
+                      watched_directory:
+                        path: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/
+                    private_key:
+                      filename: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem
+                      watched_directory:
+                        path: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/
+                tls_params:
+                  tls_minimum_protocol_version: TLSv1_2
+                  tls_maximum_protocol_version: TLSv1_3
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_https
+                codec_type: AUTO
+                use_remote_address: true
+                route_config:
+                  name: https_route
+                  virtual_hosts:
+                    - name: landing
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/user-files/"
+                          route:
+                            cluster: minio_s3
+                            timeout: 0s
+
+                        # Открытые публичные маршруты
+                        - match:
+                            prefix: "/open"
+                          route:
+                            cluster: airorc_http
+                            timeout: 10s
+
+                        # SECURITY: маршруты доступны только изнутри air_shared (Docker сеть)
+                        # Внешние запросы → 403 Forbidden
+                        - match:
+                            prefix: "/int"
+                          direct_response:
+                            status: 403
+                            body:
+                              inline_string: "Forbidden"
+
+                        # SSE для событий виджета (streaming)
+                        - match:
+                            path: "/v1/widget/events"
+                          route:
+                            cluster: airorc_http
+                            timeout: 0s
+                            idle_timeout: 0s
+
+                        - match:
+                            path: "/v1/pay/payment-status-stream"
+                          route:
+                            cluster: airorc_http
+                            timeout: 0s
+                            idle_timeout: 0s
+
+                        # Доступные маршруты для внешних клиентов
+                        - match:
+                            prefix: "/v1"
+                          route:
+                            cluster: airorc_http
+                            timeout: 30s
+                            upgrade_configs:
+                              - upgrade_type: websocket
+
+                        - match:
+                            prefix: "/grafana/"
+                          route:
+                            cluster: grafana_http
+                            timeout: 30s
+
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: react_frontend
+                            timeout: 30s
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Listener 3: gRPC TLS (:50443) → plain gRPC → airorc:50051
+    # Тот же сертификат Let's Encrypt, та же схема watched_directory
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: grpc_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 50443
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem
+                      watched_directory:
+                        path: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/
+                    private_key:
+                      filename: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem
+                      watched_directory:
+                        path: /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/
+                tls_params:
+                  tls_minimum_protocol_version: TLSv1_2
+                  tls_maximum_protocol_version: TLSv1_3
+                alpn_protocols: ["h2"]
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_grpc
+                codec_type: HTTP2
+                route_config:
+                  name: grpc_route
+                  virtual_hosts:
+                    - name: grpc
+                      domains: ["*"]
+                      # Ограничить allow_origin_string_match доменом фронтенда перед production rollout.
+                      cors:
+                        allow_origin_string_match:
+                          - exact: "https://DOMAIN_PLACEHOLDER"
+                        allow_methods: "POST, OPTIONS"
+                        allow_headers: "content-type, authorization, x-grpc-web, x-user-agent"
+                        expose_headers: "grpc-status, grpc-message, grpc-status-details-bin"
+                        allow_credentials: true
+                        max_age: "3600"
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: airorc_grpc
+                            timeout: 0s
+                http_filters:
+                  - name: envoy.filters.http.grpc_web
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
+                  - name: envoy.filters.http.cors
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - name: mysql_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 3006
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.tcp_proxy
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+                stat_prefix: mysql_tcp
+                cluster: mysql_cluster
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Clusters
+  # ───────────────────────────────────────────────────────────────────────────
+  clusters:
+
+    # Go HTTP-сервер (plain HTTP, без TLS)
+    - name: airorc_http
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: airorc_http
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: airorc
+                      port_value: 8080
+
+    - name: minio_s3
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: minio_s3
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: minio
+                      port_value: 9000
+
+    # Go gRPC-сервер (plain gRPC, без TLS, HTTP/2)
+    - name: airorc_grpc
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: airorc_grpc
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: airorc
+                      port_value: 50051
+
+    # nginx:alpine — отдаёт ACME challenge файлы certbot (webroot)
+    - name: acme_http
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: acme_http
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: acme_http
+                      port_value: 80
+
+    - name: grafana_http
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: grafana_http
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: grafana
+                      port_value: 3000
+
+    - name: mysql_cluster
+      connect_timeout: 1s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: mysql_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: air_db
+                      port_value: 3306
+
+    - name: react_frontend
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: react_frontend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: airfront
+                      port_value: 80
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin API — только localhost, не публикуется наружу через docker-compose.prod.yml
+# Доступен внутри контейнера: curl http://127.0.0.1:9901/certs
+# ─────────────────────────────────────────────────────────────────────────────
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901

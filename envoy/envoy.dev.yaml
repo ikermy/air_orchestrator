@@ -1,0 +1,330 @@
+# =============================================================================
+# Envoy — конфигурация для режима разработки (dev)
+# =============================================================================
+#
+# Роль:
+#   Единая точка TLS-терминации. Go-сервисы работают на plain HTTP/gRPC.
+#   Внешние клиенты и микросервисы всегда обращаются через Envoy по TLS.
+#
+# Listeners:
+#   :443   — HTTPS → plain HTTP → airorc:8080
+#             Сертификат: localhost.pem / localhost-key.pem
+#   :50443 — gRPC TLS → plain gRPC → airorc:50051
+#             Сертификат: localhost.pem / localhost-key.pem
+#   :9901  — Envoy Admin API (только localhost)
+#
+# Монтирование сертификатов (см. docker-compose.yml):
+#   localhost.pem      → /etc/envoy/certs/localhost.pem
+#   localhost-key.pem  → /etc/envoy/certs/localhost-key.pem
+#   host.pem           → /etc/envoy/certs/host.pem (legacy, no longer used by dev gRPC)
+#   host-key.pem       → /etc/envoy/certs/host-key.pem (legacy, no longer used by dev gRPC)
+# =============================================================================
+
+static_resources:
+
+  listeners:
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Listener 1: HTTPS (:443) → plain HTTP → airorc:8080
+    # Поддерживает WebSocket (upgrade: websocket)
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: https_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 443
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /etc/envoy/certs/localhost.pem
+                    private_key:
+                      filename: /etc/envoy/certs/localhost-key.pem
+                tls_params:
+                  tls_minimum_protocol_version: TLSv1_2
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_https
+                codec_type: AUTO
+                # Передаём реальный IP клиента в заголовке X-Forwarded-For
+                use_remote_address: true
+                route_config:
+                  name: https_route
+                  virtual_hosts:
+                    - name: landing
+                      domains: [ "*" ]
+                      # CORS — Envoy отвечает на preflight (OPTIONS) сам, не обращаясь к бэкенду.
+                      # Разрешаем любой origin (dev-режим).
+                      cors:
+                        allow_origin_string_match:
+                          - safe_regex:
+                              google_re2: { }
+                              regex: ".*"
+                        allow_methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+                        allow_headers: "content-type, authorization, x-session-id, x-service-key"
+                        allow_credentials: true
+                        max_age: "3600"
+                        filter_enabled:
+                          default_value:
+                            numerator: 100
+                            denominator: HUNDRED
+                      routes:
+                        # S3 API через тот же HTTPS Envoy host.
+                        - match:
+                            prefix: "/user-files/"
+                          route:
+                            cluster: minio_s3
+                            timeout: 0s
+
+                        # Открытые публичные маршруты
+                        - match:
+                            prefix: "/open"
+                          route:
+                            cluster: airorc_http
+                            timeout: 10s
+
+                        # SSE для событий виджета (streaming)
+                        - match:
+                            path: "/v1/widget/events"
+                          route:
+                            cluster: airorc_http
+                            timeout: 0s
+                            idle_timeout: 0s
+
+                        - match:
+                            path: "/v1/pay/payment-status-stream"
+                          route:
+                            cluster: airorc_http
+                            timeout: 0s
+                            idle_timeout: 0s
+
+                        # Все запросы к API (поскольку Gin использует группу /v1)
+                        - match:
+                            prefix: "/v1"
+                          route:
+                            cluster: airorc_http
+                            timeout: 30s
+                            upgrade_configs:
+                              - upgrade_type: websocket
+
+                        # Запросы к Grafana
+                        - match:
+                            prefix: "/grafana/"
+                          route:
+                            cluster: grafana_http
+                            timeout: 30s
+
+                        # тест виджета
+                        - match:
+                            path: "/test.html"
+                          route:
+                            cluster: airorc_http
+                            timeout: 30s
+
+                        # 4. Всё остальное — это статика React (JS, CSS, HTML)
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: react_frontend
+                            timeout: 30s
+                http_filters:
+                  # CORS-фильтр: обрабатывает preflight OPTIONS без обращения к upstream
+                  - name: envoy.filters.http.cors
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Listener 2: gRPC TLS (:50443) → plain gRPC → airorc:50051
+    # HTTP/2 обязателен для gRPC; timeout=0s для stream-вызовов
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: grpc_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 50443
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /etc/envoy/certs/localhost.pem
+                    private_key:
+                      filename: /etc/envoy/certs/localhost-key.pem
+                tls_params:
+                  tls_minimum_protocol_version: TLSv1_2
+                # h2 обязателен для gRPC
+                alpn_protocols: [ "h2" ]
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_grpc
+                # Только HTTP/2 для gRPC
+                codec_type: HTTP2
+                route_config:
+                  name: grpc_route
+                  virtual_hosts:
+                    - name: grpc
+                      domains: [ "*" ]
+                      cors:
+                        allow_origin_string_match:
+                          - safe_regex:
+                              google_re2: { }
+                              regex: ".*"
+                        allow_methods: "POST, OPTIONS"
+                        allow_headers: "content-type, authorization, x-grpc-web, x-user-agent"
+                        allow_credentials: true
+                        max_age: "3600"
+                      routes:
+                        - match:
+                            prefix: "/"
+                            # Match gRPC-Web preflight as well as the POST request.
+                          route:
+                            cluster: airorc_grpc
+                            # 0s = нет таймаута (нужно для streaming gRPC)
+                            timeout: 0s
+                http_filters:
+                  - name: envoy.filters.http.grpc_web
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
+                  - name: envoy.filters.http.cors
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - name: mysql_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 3006
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.tcp_proxy # Используем TCP прокси
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+                stat_prefix: mysql_tcp
+                cluster: mysql_cluster # Куда отправляем
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Clusters — upstream сервисы (plain HTTP/gRPC внутри Docker-сети)
+  # ───────────────────────────────────────────────────────────────────────────
+  clusters:
+
+    # HTTP upstream: airorc Go-сервер на порту 8080
+    - name: airorc_http
+      connect_timeout: 5s
+      type: STRICT_DNS        # Docker DNS резолвит имя сервиса
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: airorc_http
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      # Имя сервиса из docker-compose (не container_name!)
+                      address: airorc
+                      port_value: 8080
+
+    # Public S3 upstream. Host routing is configured by the deployment domain;
+    # the MinIO console is intentionally not exposed.
+    - name: minio_s3
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: minio_s3
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: minio
+                      port_value: 9000
+
+    # gRPC upstream: airorc Go-сервер на порту 50051 (plain gRPC, HTTP/2)
+    - name: airorc_grpc
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      # Принудительно HTTP/2 для upstream gRPC
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: { }
+      load_assignment:
+        cluster_name: airorc_grpc
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: airorc
+                      port_value: 50051
+
+    - name: grafana_http
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: grafana_http
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: grafana   # имя сервиса из docker-compose air_grafana
+                      port_value: 3000
+
+    - name: mysql_cluster
+      connect_timeout: 1s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: mysql_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: air_db # Имя сервис-контейнера из air-db.yml
+                      port_value: 3306
+
+    - name: react_frontend
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: react_frontend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: airfront # Имя контейнера фронтенда
+                      port_value: 80 # Внутренний порт Nginx
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin API — только для отладки, не публикуется наружу
+# http://localhost:9901/stats, /clusters, /config_dump
+# ─────────────────────────────────────────────────────────────────────────────
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901

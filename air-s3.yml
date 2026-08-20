@@ -1,0 +1,57 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: airorc_minio
+    restart: unless-stopped
+    command: server /data --address ":9000"
+    environment:
+      MINIO_ROOT_USER: root
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password.txt
+      MINIO_SERVER_URL: https://${DOMAIN}
+    volumes:
+      - minio_data:/data
+      - ./secrets/minio_root_password.txt:/run/secrets/minio_root_password.txt:ro
+    expose:
+      - "9000"
+    networks:
+      - app_internal
+      - air_shared
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: root
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password.txt
+      REAL_URL: ${DOMAIN}
+    volumes:
+      - ./secrets/minio_root_password.txt:/run/secrets/minio_root_password.txt:ro
+      - ./minio-cors.json:/config/cors.json:ro
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        mc alias set local http://minio:9000 root "$$(cat /run/secrets/minio_root_password.txt)"
+        mc mb --ignore-existing local/user-files
+        mc cors set local/user-files /config/cors.json
+    networks:
+      - app_internal
+
+volumes:
+  minio_data:
+    name: airorc_minio_data
+
+networks:
+  app_internal:
+    name: app_internal
+    external: true
+  air_shared:
+    name: air_shared
+    external: true

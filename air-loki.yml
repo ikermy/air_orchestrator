@@ -1,0 +1,23 @@
+services:
+  air_loki:
+    image: grafana/loki:3.7.3
+    container_name: air_loki
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/loki/local-config.yaml"
+      - "-target=all"
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - monitoring_shared
+
+volumes:
+  loki_data:
+
+networks:
+  monitoring_shared:
+    name: monitoring_shared
+    external: true

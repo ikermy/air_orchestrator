@@ -1,0 +1,16 @@
+services:
+  air_promtail:
+    image: grafana/promtail:3.0.0
+    container_name: air_promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring_shared
+
+networks:
+  monitoring_shared:
+    name: monitoring_shared
+    external: true

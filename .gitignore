@@ -1,0 +1,82 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+_rules
+fix_encoding.go
+profiles
+ver.txt
+
+.kilo
+_TZ
+
+# Страница тестирования виджета
+test.html
+
+# Volume DB
+mysql_data
+
+# Test binary, built with go test -c
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment variables and secrets
+secrets
+cfg.env
+*.env
+config.yaml
+secrets.yaml
+
+# Debug and log files
+*.log
+logs/
+debug
+
+# Build output
+build/
+
+# Database files
+*.db
+*.sqlite
+
+# Generated files
+gen/
+generated/
+
+# Temporary files
+tmp/
+temp/
+
+# Air temporary files
+.air.conf
+/tmp
+
+# Certificate files
+*.pem
+*.key
+*.crt
+
+# GoLand IDE related files
+*.iml
+out/
+/internal/delivery/grpc/proto/

@@ -1,0 +1,119 @@
+{
+  "title": "Operator",
+  "uid": "air-oper-main",
+  "schemaVersion": 39,
+  "refresh": "15s",
+  "tags": ["oper"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP RPS",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{
+        "expr": "sum(rate(air_oper_http_requests_total[5m]))",
+        "legendFormat": "RPS"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "HTTP Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(air_oper_http_request_duration_seconds_bucket[5m])) by (le, route))",
+        "legendFormat": "{{route}}"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Message Events",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{
+        "expr": "sum(rate(air_oper_message_events_total[5m])) by (source, result, message_type)",
+        "legendFormat": "{{source}} {{result}} {{message_type}}"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Telegram Send Attempts",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{
+        "expr": "sum(rate(air_oper_telegram_send_total[5m])) by (operation, result)",
+        "legendFormat": "{{operation}} {{result}}"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "Telegram Send Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(air_oper_telegram_send_duration_seconds_bucket[5m])) by (le, operation))",
+        "legendFormat": "{{operation}}"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "History Requests",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [{
+        "expr": "sum(rate(air_oper_history_requests_total[5m])) by (status)",
+        "legendFormat": "{{status}}"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "History Request Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(air_oper_history_request_duration_seconds_bucket[5m])) by (le, status))",
+        "legendFormat": "{{status}}"
+      }]
+    },
+    {
+      "id": 8,
+      "title": "Operator Sync Attempts",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "targets": [{
+        "expr": "sum(rate(air_oper_operator_sync_total[5m])) by (status)",
+        "legendFormat": "{{status}}"
+      }]
+    },
+    {
+      "id": 9,
+      "title": "SSE Sessions",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "targets": [{
+        "expr": "sum(rate(air_oper_sse_sessions_total[5m])) by (event)",
+        "legendFormat": "{{event}}"
+      }]
+    },
+    {
+      "id": 10,
+      "title": "Active Dialogs",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 36},
+      "targets": [{
+        "expr": "air_oper_active_dialogs",
+        "legendFormat": "dialogs"
+      }]
+    },
+    {
+      "id": 11,
+      "title": "Active Operators",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 36},
+      "targets": [{
+        "expr": "air_oper_active_operators",
+        "legendFormat": "operators"
+      }]
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: "cadvisor"
+    static_configs:
+      - targets:
+          - "cadvisor:8080"
+    metric_relabel_configs:
+      # Оставляем только важные метрики (память, CPU, сеть), остальное удаляем
+      - source_labels: [ __name__ ]
+        regex: '^container_(memory_usage_bytes|cpu_usage_seconds_total|network_receive_bytes_total|network_transmit_bytes_total)$'
+        action: keep
+
+  - job_name: "airorc"
+    static_configs:
+      - targets:
+          - "airorc:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "whatsbot"
+    static_configs:
+      - targets:
+          - "whatsbot:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "tgbot"
+    static_configs:
+      - targets:
+          - "tgbot:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "tguserbot"
+    static_configs:
+    - targets:
+        - "tguserbot:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "avitobot"
+    static_configs:
+      - targets:
+          - "avitobot:8090"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "oper"
+    static_configs:
+      - targets:
+          - "operator:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "crm"
+    static_configs:
+      - targets:
+          - "crm:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "widget"
+    static_configs:
+      - targets:
+          - "widget:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "hunter"
+    static_configs:
+      - targets:
+          - "hunter:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "pay"
+    static_configs:
+      - targets:
+          - "pay:8080"
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  - job_name: "minio"
+    static_configs:
+      - targets:
+          - "minio:9000"
+    metrics_path: "/minio/v2/metrics/cluster"
+    scheme: "http"

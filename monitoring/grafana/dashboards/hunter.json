@@ -1,0 +1,22 @@
+{
+  "title": "AiR Lead Hunter",
+  "uid": "airorc-lead-hunter",
+  "schemaVersion": 39,
+  "refresh": "15s",
+  "tags": ["airorc", "lead-hunter"],
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {"id": 1, "title": "Incoming Messages", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "targets": [{"expr": "sum(rate(air_lead_hunter_messages_received_total[5m]))", "legendFormat": "messages/s"}]},
+    {"id": 2, "title": "Processed Messages", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "targets": [{"expr": "sum(rate(air_lead_hunter_messages_processed_total[5m]))", "legendFormat": "messages/s"}]},
+    {"id": 3, "title": "Ignored Messages", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(air_lead_hunter_messages_ignored_total[5m]))", "legendFormat": "messages/s"}]},
+    {"id": 4, "title": "HTTP RPS", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "targets": [{"expr": "sum(rate(air_lead_hunter_http_requests_total[5m]))", "legendFormat": "RPS"}]},
+    {"id": 5, "title": "Messages Received by Type and Bot", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}, "targets": [{"expr": "sum(rate(air_lead_hunter_messages_received_total[5m])) by (bot_id, message_type)", "legendFormat": "{{bot_id}} / {{message_type}}"}]},
+    {"id": 6, "title": "Messages Ignored by Reason", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}, "targets": [{"expr": "sum(rate(air_lead_hunter_messages_ignored_total[5m])) by (bot_id, reason)", "legendFormat": "{{bot_id}} / {{reason}}"}]},
+    {"id": 7, "title": "Message Processing Results", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}, "targets": [{"expr": "sum(rate(air_lead_hunter_messages_processed_total[5m])) by (bot_id, status)", "legendFormat": "{{bot_id}} / {{status}}"}]},
+    {"id": 8, "title": "Bot Lifecycle Events", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}, "targets": [{"expr": "sum(rate(air_lead_hunter_bot_lifecycle_total[5m])) by (bot_id, action, status)", "legendFormat": "{{bot_id}} / {{action}} / {{status}}"}]},
+    {"id": 9, "title": "HTTP Requests by Route", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}, "targets": [{"expr": "sum(rate(air_lead_hunter_http_requests_total[5m])) by (method, route, status)", "legendFormat": "{{method}} {{route}} {{status}}"}]},
+    {"id": 10, "title": "HTTP Latency p50 / p95 / p99, s", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}, "targets": [{"expr": "histogram_quantile(0.50, sum(rate(air_lead_hunter_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50"}, {"expr": "histogram_quantile(0.95, sum(rate(air_lead_hunter_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}, {"expr": "histogram_quantile(0.99, sum(rate(air_lead_hunter_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99"}]},
+    {"id": 11, "title": "Lead Contact Results", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}, "targets": [{"expr": "sum(rate(air_lead_hunter_lead_contact_results_total[5m])) by (provider, status)", "legendFormat": "{{provider}} / {{status}}"}]},
+    {"id": 12, "title": "Provider Operations", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28}, "targets": [{"expr": "sum(rate(air_lead_hunter_provider_operations_total[5m])) by (provider, operation, status)", "legendFormat": "{{provider}} / {{operation}} / {{status}}"}]}
+  ]
+}

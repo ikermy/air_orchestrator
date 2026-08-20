@@ -1,0 +1,110 @@
+{
+  "title": "AiR ORCHESTRATOR",
+  "uid":   "airorc-main",
+  "schemaVersion": 39,
+  "refresh": "15s",
+  "tags": ["airorc"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP RPS",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{
+        "expr": "sum(rate(airorc_http_requests_total[1m]))",
+        "legendFormat": "RPS"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "HTTP Latency p95, s",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(airorc_http_request_duration_seconds_bucket[5m])) by (le))",
+        "legendFormat": "p95"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Active WebSocket Sessions",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{
+        "expr": "airorc_ws_active_sessions",
+        "legendFormat": "WS Sessions"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Active AI Test Sessions",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{
+        "expr": "airorc_api_active_test_sessions",
+        "legendFormat": "Test Sessions"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "HTTP Requests by Route",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
+      "targets": [{
+        "expr": "sum(rate(airorc_http_requests_total[1m])) by (method, path)",
+        "legendFormat": "{{method}} {{path}}"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "HTTP Error Rate (4xx+5xx)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [{
+        "expr": "sum(rate(airorc_http_requests_total{status_code=~\"[45]..\"}[1m])) by (path, status_code)",
+        "legendFormat": "{{status_code}} {{path}}"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "Auth Attempts",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [{
+        "expr": "sum(rate(airorc_auth_attempts_total[1m])) by (result)",
+        "legendFormat": "{{result}}"
+      }]
+    },
+    {
+      "id": 8,
+      "title": "DB Query Duration p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(airorc_db_query_duration_seconds_bucket[5m])) by (le, operation))",
+        "legendFormat": "{{operation}}"
+      }]
+    },
+    {
+      "id": 9,
+      "title": "Demo Limit Hits",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "targets": [{
+        "expr": "rate(airorc_api_demo_limit_hits_total[5m])",
+        "legendFormat": "hits/s"
+      }]
+    },
+    {
+      "id": 10,
+      "title": "WhatsBot HTTP RPS",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
+      "targets": [{
+        "expr": "sum(rate(air_whatsbot_http_requests_total[5m])) by (route, status)",
+        "legendFormat": "{{route}} {{status}}"
+      }]
+    }
+  ]
+}
+

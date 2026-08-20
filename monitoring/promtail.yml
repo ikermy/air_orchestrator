@@ -1,0 +1,45 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://air_loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    pipeline_stages:
+      - docker: {}
+      - static_labels:
+          job: docker
+          source: promtail
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_label_logging']
+        regex: loki
+        action: keep
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      - source_labels: ['__meta_docker_container_label_app']
+        regex: '(.+)'
+        target_label: app
+      - source_labels: ['__meta_docker_container_label_service']
+        regex: '(.+)'
+        target_label: service
+      - source_labels: ['__meta_docker_container_label_tier']
+        regex: '(.+)'
+        target_label: tier
+      - source_labels: ['__meta_docker_container_log_stream']
+        regex: '(.+)'
+        target_label: stream
+      - source_labels: ['__meta_docker_container_id']
+        regex: '(.+)'
+        target_label: container_id
+      - source_labels: ['__meta_docker_container_id']
+        target_label: __path__
+        replacement: /var/lib/docker/containers/$1/$1-json.log

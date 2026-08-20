@@ -1,0 +1,30 @@
+{
+  "title": "AiR Pay",
+  "uid": "airorc-pay",
+  "schemaVersion": 39,
+  "refresh": "15s",
+  "tags": ["airorc", "pay"],
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {"id": 1, "title": "HTTP RPS", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "targets": [{"expr": "sum(rate(air_pay_http_requests_total[5m]))", "legendFormat": "RPS"}]},
+    {"id": 2, "title": "HTTP p95, s", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(air_pay_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}]},
+    {"id": 3, "title": "Active SSE Connections", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "targets": [{"expr": "air_pay_sse_connections", "legendFormat": "connections"}]},
+    {"id": 4, "title": "Active Payments", "type": "stat", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "targets": [{"expr": "sum(air_pay_active_payments)", "legendFormat": "payments"}]},
+    {"id": 5, "title": "HTTP Requests by Route", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}, "targets": [{"expr": "sum(rate(air_pay_http_requests_total[5m])) by (method, route, status)", "legendFormat": "{{method}} {{route}} {{status}}"}]},
+    {"id": 6, "title": "HTTP Latency p50 / p95 / p99, s", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}, "targets": [{"expr": "histogram_quantile(0.50, sum(rate(air_pay_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50"}, {"expr": "histogram_quantile(0.95, sum(rate(air_pay_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}, {"expr": "histogram_quantile(0.99, sum(rate(air_pay_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99"}]},
+    {"id": 7, "title": "Payment Operations", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}, "targets": [{"expr": "sum(rate(air_pay_payment_operations_total[5m])) by (operation, status)", "legendFormat": "{{operation}} / {{status}}"}]},
+    {"id": 8, "title": "Payment Status", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}, "targets": [{"expr": "sum(rate(air_pay_payment_status_total[5m])) by (status, currency)", "legendFormat": "{{status}} / {{currency}}"}]},
+    {"id": 9, "title": "Payment Amount by Currency", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}, "targets": [{"expr": "sum(rate(air_pay_payment_amount_total[5m])) by (currency)", "legendFormat": "{{currency}}"}]},
+    {"id": 10, "title": "Payment Duration by Operation, s", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(air_pay_payment_processing_duration_seconds_bucket[5m])) by (le, operation))", "legendFormat": "{{operation}} p95"}]},
+    {"id": 11, "title": "Bybit API Requests", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}, "targets": [{"expr": "sum(rate(air_pay_bybit_api_requests_total[5m])) by (operation, status)", "legendFormat": "{{operation}} / {{status}}"}]},
+    {"id": 12, "title": "Bybit API Duration, s", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(air_pay_bybit_api_request_duration_seconds_bucket[5m])) by (le, operation))", "legendFormat": "{{operation}} p95"}, {"expr": "rate(air_pay_bybit_rate_limit_total[5m])", "legendFormat": "rate limits"}]},
+    {"id": 13, "title": "SSE Connections and Messages", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36}, "targets": [{"expr": "air_pay_sse_connections", "legendFormat": "connections"}, {"expr": "sum(rate(air_pay_sse_messages_total[5m])) by (event, status)", "legendFormat": "{{event}} / {{status}}"}, {"expr": "sum(rate(air_pay_sse_messages_dropped_total[5m])) by (reason)", "legendFormat": "dropped: {{reason}}"}]},
+    {"id": 14, "title": "SSE Connection Duration, s", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(air_pay_sse_connection_duration_seconds_bucket[5m])) by (le, status))", "legendFormat": "{{status}} p95"}]},
+    {"id": 15, "title": "Monitor Cycles and Errors", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44}, "targets": [{"expr": "sum(rate(air_pay_payment_monitor_cycles_total[5m])) by (status)", "legendFormat": "cycle: {{status}}"}, {"expr": "sum(rate(air_pay_payment_monitor_errors_total[5m])) by (operation)", "legendFormat": "error: {{operation}}"}]},
+    {"id": 16, "title": "Monitor Cycle Duration, s", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(air_pay_payment_monitor_cycle_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}]},
+    {"id": 17, "title": "Database Operations", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 52}, "targets": [{"expr": "sum(rate(air_pay_database_operations_total[5m])) by (operation, status)", "legendFormat": "{{operation}} / {{status}}"}]},
+    {"id": 18, "title": "Database Duration, s", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 52}, "targets": [{"expr": "histogram_quantile(0.95, sum(rate(air_pay_database_operation_duration_seconds_bucket[5m])) by (le, operation))", "legendFormat": "{{operation}} p95"}]},
+    {"id": 19, "title": "Payment Status Changes", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 60}, "targets": [{"expr": "sum(rate(air_pay_payment_status_changes_total[5m])) by (from, to, currency)", "legendFormat": "{{from}} → {{to}} / {{currency}}"}]},
+    {"id": 20, "title": "Payment Reuse", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 60}, "targets": [{"expr": "sum(rate(air_pay_payment_reuse_total[5m])) by (result)", "legendFormat": "{{result}}"}, {"expr": "sum(air_pay_active_payments) by (status)", "legendFormat": "active: {{status}}"}]}
+  ]
+}

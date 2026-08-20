@@ -1,0 +1,142 @@
+{
+  "title": "CRM",
+  "uid": "air-crm-main",
+  "schemaVersion": 39,
+  "refresh": "15s",
+  "tags": ["crm"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP RPS",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(rate(air_crm_http_requests_total[5m]))",
+          "legendFormat": "RPS"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP In Flight",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "targets": [
+        {
+          "expr": "air_crm_http_requests_in_flight",
+          "legendFormat": "in flight"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "HTTP Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(air_crm_http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "HTTP Requests by Route/Status",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 6},
+      "targets": [
+        {
+          "expr": "sum(rate(air_crm_http_requests_total[5m])) by (method, route, status)",
+          "legendFormat": "{{method}} {{route}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "CRM API Requests RPS",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "targets": [
+        {
+          "expr": "sum(rate(air_crm_api_requests_total[5m])) by (operation, status)",
+          "legendFormat": "{{operation}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "CRM API Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(air_crm_api_request_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "{{operation}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "CRM API Errors",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "targets": [
+        {
+          "expr": "sum(rate(air_crm_api_errors_total[5m])) by (operation, reason)",
+          "legendFormat": "{{operation}} {{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Entity Operations",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+      "targets": [
+        {
+          "expr": "sum(rate(air_crm_entity_operations_total[5m])) by (entity, operation, status)",
+          "legendFormat": "{{entity}} {{operation}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "OAuth Flows",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+      "targets": [
+        {
+          "expr": "sum(rate(air_crm_oauth_flows_total[5m])) by (provider, stage, status)",
+          "legendFormat": "{{provider}} {{stage}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Provider Requests",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+      "targets": [
+        {
+          "expr": "sum(rate(air_crm_provider_requests_total[5m])) by (provider, method, status)",
+          "legendFormat": "{{provider}} {{method}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Provider Latency p95, s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 38},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(air_crm_provider_request_duration_seconds_bucket[5m])) by (le, provider, method))",
+          "legendFormat": "{{provider}} {{method}}"
+        }
+      ]
+    }
+  ]
+}
+

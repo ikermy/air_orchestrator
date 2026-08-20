@@ -1,0 +1,77 @@
+services:
+  airorc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_BUILD_TAGS: prod
+    image: ${DOCKER_IMAGE:-airorc:prod}
+    container_name: airorc_app
+    restart: unless-stopped
+    volumes:
+      - ./secrets:/run/secrets:ro
+    environment:
+      - DB_HOST=air_db:3306
+      - DB_NAME=air
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REAL_URL=${DOMAIN}
+      - GRPC_PORT=50051
+      - WHATSAPP_CALLS_GRPC_ADDR=${WHATSAPP_CALLS_GRPC_ADDR:-whatsbot:9090}
+      - TELEGRAM_CALLS_GRPC_ADDR=${TELEGRAM_CALLS_GRPC_ADDR:-tguserbot:9090}
+      - LOG_LEVEL=info
+      - SWAGGER_ENABLED=false
+      - APP_MASTER_KEY_FILE=/run/secrets/app_master_key.txt
+      - NEW_APP_MASTER_KEY_FILE=/run/secrets/new_app_master_key.txt
+      - APP_CONFIG_REKEY=false
+      - GLOB_USER_MODEL_TTL=1440
+      - REDIS_ADDR=air_redis:6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - MINIO_INTERNAL_ENDPOINT=minio:9000
+      - MINIO_BUCKET=user-files
+      - MINIO_ACCESS_KEY=root
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password.txt
+      # ── SQL время отмены контекста долгих операций в секундах ──────────────────────────────────────────────────────
+      - GLOB_SQL_CTX_CANCEL=3
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app_internal
+      - air_shared
+      - monitoring_shared
+
+  envoy:
+    image: envoyproxy/envoy:v1.32-latest
+    container_name: airorc_envoy
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command: -c "sed \"s/DOMAIN_PLACEHOLDER/${DOMAIN}/g\" /etc/envoy/envoy.prod.yaml > /tmp/envoy.yaml && envoy -c /tmp/envoy.yaml --log-level warn"
+    environment:
+      - DOMAIN=${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3006:3006"
+      - "50443:50443"
+    volumes:
+      - ./envoy/envoy.prod.yaml:/etc/envoy/envoy.prod.yaml:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - airorc
+    networks:
+      - app_internal
+      - air_shared
+
+
+networks:
+  app_internal:
+    name: app_internal
+    driver: bridge
+    external: true
+  air_shared:
+    name: air_shared
+    external: true
+  monitoring_shared:
+    name: monitoring_shared
+    external: true
