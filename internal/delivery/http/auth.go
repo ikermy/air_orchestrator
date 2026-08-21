@@ -321,8 +321,7 @@ func (w *Web) ResetPass(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /auth/email/confirm [get]
 func (w *Web) ConfirmEmail(c *gin.Context) {
-	parts := strings.Split(mode.GetRealHost(), ":")
-	host := strings.Join(parts[:2], ":")
+	host := publicWebHost()
 
 	tokenStr := c.Query("key")
 	if tokenStr == "" {
@@ -339,6 +338,17 @@ func (w *Web) ConfirmEmail(c *gin.Context) {
 
 	go w.SendAdminNotification(MailConfirm, fmt.Sprintf("email: %s\n", email))
 	c.Redirect(http.StatusFound, fmt.Sprintf("%s/?confirm=success&email=%s", host, url.QueryEscape(email)))
+}
+
+// publicWebHost returns the public HTTPS origin used for browser redirects.
+// GetRealHost normally contains only a hostname, but keeping this centralized
+// avoids unsafe splitting of hostnames with or without a port.
+func publicWebHost() string {
+	host := strings.TrimRight(mode.GetRealHost(), "/")
+	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+		return host
+	}
+	return "https://" + host
 }
 
 // RefreshToken godoc

@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,6 +20,14 @@ import (
 	"github.com/ikermy/air_common/pkg/mode"
 	"github.com/ikermy/air_logger/v2/pkg/logger"
 )
+
+func publicWebHost() string {
+	host := strings.TrimRight(mode.GetRealHost(), "/")
+	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+		return host
+	}
+	return "https://" + host
+}
 
 // store — минимальный интерфейс для чтения настроек из app_config.
 // Реализуется *mysql.DB.
@@ -183,7 +192,7 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 	sincerely := s.end.TranslateMessageWithLang(lang, "sincerely.marusia.team")
 
 	to := []string{recipient}
-	confirmLink := fmt.Sprintf("https://%s/confirm?key=%s", mode.GetRealHost(), token)
+	confirmLink := fmt.Sprintf("%s/confirm?key=%s", publicWebHost(), url.QueryEscape(token))
 
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
@@ -297,7 +306,7 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 	to := []string{recipient}
 
 	// Формирование HTML-письма со ссылкой для сброса пароля
-	resetLink := fmt.Sprintf("https://%s/reset?key=%s", mode.GetRealHost(), resetToken)
+	resetLink := fmt.Sprintf("%s/reset?key=%s", publicWebHost(), url.QueryEscape(resetToken))
 
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)

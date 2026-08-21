@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air_common/pkg/mode"
 	"github.com/ikermy/air_logger/v2/pkg/logger"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -74,16 +72,7 @@ func (w *Web) GoogleOAuthURL(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /open/google/oauth/callback [get]
 func (w *Web) GoogleOAuthCallback(c *gin.Context) {
-	var host string
-	var parts []string
-
-	// TODO разобраться и протестировать
-	//if mode.Product {
-	parts = strings.Split(mode.GetRealHost(), ":")
-	host = strings.Join(parts[:2], ":")
-	//} else {
-	//	host = mode.RealHost
-	//}
+	host := publicWebHost()
 	code := c.Query("code")
 	state := c.Query("state")
 	errorParam := c.Query("error")
