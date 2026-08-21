@@ -9,6 +9,7 @@ import (
 	"github.com/ikermy/air_common/pkg/endpoint"
 	"github.com/ikermy/air_common/pkg/model"
 	"github.com/ikermy/air_common/pkg/model/commdom"
+	"github.com/ikermy/air_common/pkg/model/create"
 	"github.com/ikermy/air_common/pkg/startpoint"
 
 	"sync"
@@ -194,24 +195,37 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 	if existing, ok := ta.sessions.Load(key); ok {
 		session := existing.(*TestSession)
 
-		// Проверяем, что provider совпадает
-		if session.RespModel.Assist.Provider != provider {
-			return nil, nil, fmt.Errorf("сессия уже существует для другого провайдера (существующий: %s, запрошенный: %s)",
-				session.RespModel.Assist.Provider.String(), provider.String())
+		// StopSession может закрыть каналы, пока запись о RespModel ещё
+		// доступна для повторного подключения. Такой канал переиспользовать
+		// нельзя: WebSocket сразу получит закрытый TxCh.
+		if session.Channel == nil || !session.Channel.IsTxOpen() || !session.Channel.IsRxOpen() {
+			ta.sessions.Delete(key)
+			if session.RespModel != nil && session.RespModel.Chan != nil {
+				delete(session.RespModel.Chan, session.TreadId)
+			}
+			metrics.ActiveTestSessions.Dec()
+			ok = false
+		} else {
+
+			// Проверяем, что provider совпадает
+			if session.RespModel.Assist.Provider != provider {
+				return nil, nil, fmt.Errorf("сессия уже существует для другого провайдера (существующий: %s, запрошенный: %s)",
+					session.RespModel.Assist.Provider.String(), provider.String())
+			}
+
+			session.mu.Lock()
+			session.LastUsedAt = time.Now()
+			session.mu.Unlock()
+			logger.Debug("TestAPI: сессия уже существует для respId=%d", respId, userId)
+
+			userModel, err := ta.getUserModel(userId, provider)
+			if err != nil {
+				logger.Error("TestAPI: ошибка получения активной модели пользователя для существующей сессии respId=%d: %v", respId, err, userId)
+				return nil, nil, fmt.Errorf("ошибка получения активной модели пользователя: %w", err)
+			}
+
+			return session, userModel, nil
 		}
-
-		session.mu.Lock()
-		session.LastUsedAt = time.Now()
-		session.mu.Unlock()
-		logger.Debug("TestAPI: сессия уже существует для respId=%d", respId, userId)
-
-		userModel, err := ta.getUserModel(userId, provider)
-		if err != nil {
-			logger.Error("TestAPI: ошибка получения активной модели пользователя для существующей сессии respId=%d: %v", respId, err, userId)
-			return nil, nil, fmt.Errorf("ошибка получения активной модели пользователя: %w", err)
-		}
-
-		return session, userModel, nil
 	}
 
 	// Получаем или создаем treadId (dialogId) через GetOrSetTreadAndResponder
@@ -329,11 +343,22 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 	respModel.Cancel = sessCancel
 
 	testChannel := respModel.Chan[treadId]
-	if testChannel == nil {
-		// Это не должно происходить - канал должен быть создан в GetOrSetRespGPT
-		return nil, nil, fmt.Errorf("канал не найден в respModel для dialogId=%d", treadId)
+	if testChannel == nil || !testChannel.IsTxOpen() || !testChannel.IsRxOpen() {
+		// Провайдер может вернуть закэшированный, но уже закрытый Ch.
+		// При отключении WebSocket переподключение не используется, поэтому
+		// для новой сессии создаём новый набор каналов.
+		testChannel = &model.Ch{
+			TxCh:     make(chan model.Message, create.TxChanBuffer),
+			RxCh:     make(chan model.Message, create.RxChanBuffer),
+			UserID:   userId,
+			DialogID: treadId,
+			RespName: "test_responder",
+		}
+		if respModel.Chan == nil {
+			respModel.Chan = make(map[uint64]*model.Ch)
+		}
+		respModel.Chan[treadId] = testChannel
 	}
-	// respModel.Chan инициализирован в GetOrSetRespGPT, повторная проверка не нужна
 
 	logger.Debug("TestAPI: используется канал из respModel, буфер TxCh=%d, адрес=%p",
 		cap(testChannel.TxCh), testChannel.TxCh, userId)
@@ -379,9 +404,14 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 
 	// Мониторим ошибки в фоновом режиме
 	go func() {
-		for err := range errCh {
-			if err != nil {
-				logger.Error("TestAPI: ошибка от StarterListener, respId=%d: %v", respId, err, userId)
+		for {
+			select {
+			case err := <-errCh:
+				if err != nil {
+					logger.Error("TestAPI: ошибка от StarterListener, respId=%d: %v", respId, err, userId)
+				}
+			case <-sessCtx.Done():
+				return
 			}
 		}
 	}()
@@ -627,38 +657,45 @@ func (ta *TestAPI) SendRealtimeAudio(userId uint32, respId uint64, pcm16 []byte)
 // Используется при закрытии WebSocket соединения для возможности переподключения
 // ВАЖНО: НЕ отменяет контекст и НЕ закрывает каналы - они живут до истечения TTL респондента
 func (ta *TestAPI) CleanupWebSocketSession(userId uint32, respId uint64) error {
-	key := ta.sessionKey(userId, respId)
+	// Переподключение не поддерживается: отключение WebSocket полностью
+	// завершает тестовую сессию. Следующее подключение создаст новые каналы.
+	logger.Debug("WebSocket сессия отключена, respId=%d (сессия завершена)", respId, userId)
+	return ta.StopSession(userId, respId)
+	/*
+	   key := ta.sessionKey(userId, respId)
 
-	session, ok := ta.sessions.Load(key)
-	if !ok {
-		// Сессия уже удалена - это нормально (может быть cleanup или повторный вызов)
-		logger.Debug("CleanupWebSocketSession: сессия уже удалена, respId=%d", respId, userId)
-		return nil
-	}
+	   session, ok := ta.sessions.Load(key)
 
-	s := session.(*TestSession)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	   	if !ok {
+	   		// Сессия уже удалена - это нормально (может быть cleanup или повторный вызов)
+	   		logger.Debug("CleanupWebSocketSession: сессия уже удалена, respId=%d", respId, userId)
+	   		return nil
+	   	}
 
-	// ВАЖНО: НЕ отменяем контекст сессии! Он связан с контекстом респондента
-	// Отмена контекста приведет к закрытию каналов, что помешает переподключению
-	// if s.Cancel != nil {
-	//     s.Cancel()  // ← НЕ ВЫЗЫВАЕМ!
-	// }
+	   s := session.(*TestSession)
+	   s.mu.Lock()
+	   defer s.mu.Unlock()
 
-	// ВАЖНО: НЕ закрываем канал сессии! Он используется респондентом
-	// if s.Channel != nil {
-	//     if err := s.Channel.Close(); err != nil {
-	//         logger.Warn("Ошибка закрытия канала в CleanupWebSocketSession: %v", err, userId)
-	//     }
-	// }
+	   // ВАЖНО: НЕ отменяем контекст сессии! Он связан с контекстом респондента
+	   // Отмена контекста приведет к закрытию каналов, что помешает переподключению
+	   // if s.Cancel != nil {
+	   //     s.Cancel()  // ← НЕ ВЫЗЫВАЕМ!
+	   // }
 
-	// Не удаляем TestSession сразу: повторное подключение /ws/test-model
-	// должно получить тот же канал через GetChannel. Жизненный цикл сессии
-	// завершит штатный cleanupLoop по TTL LastUsedAt.
-	s.LastUsedAt = time.Now()
-	logger.Debug("WebSocket сессия отключена, respId=%d (сессия и каналы сохранены до TTL)", respId, userId)
-	return nil
+	   // ВАЖНО: НЕ закрываем канал сессии! Он используется респондентом
+	   // if s.Channel != nil {
+	   //     if err := s.Channel.Close(); err != nil {
+	   //         logger.Warn("Ошибка закрытия канала в CleanupWebSocketSession: %v", err, userId)
+	   //     }
+	   // }
+
+	   // Не удаляем TestSession сразу: повторное подключение /ws/test-model
+	   // должно получить тот же канал через GetChannel. Жизненный цикл сессии
+	   // завершит штатный cleanupLoop по TTL LastUsedAt.
+	   s.LastUsedAt = time.Now()
+	   logger.Debug("WebSocket сессия отключена, respId=%d (сессия и каналы сохранены до TTL)", respId, userId)
+	   return nil
+	*/
 }
 
 // cleanupLoop периодически очищает устаревшие сессии

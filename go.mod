@@ -8,7 +8,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/ikermy/air_common v1.50.90
+	github.com/ikermy/air_common v1.50.92
 	github.com/ikermy/air_logger/v2 v2.1.3
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/pquerna/otp v1.5.0
