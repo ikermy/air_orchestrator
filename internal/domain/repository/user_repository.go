@@ -30,7 +30,7 @@ type AppConfig interface {
 type UserRepository interface {
 	// reader — операции чтения данных пользователя.
 	CheckEmail(email, emailHMAC string) (uint32, error)
-	GetAuthData(email, emailHMAC string) (storedHash string, userId uint32, confirmed, disabled int, isLegacy bool, err error)
+	GetAuthData(email, emailHMAC string) (storedHash string, userId uint32, confirmed, disabled, isLegacy bool, err error)
 	GetUserDetails(userId uint32) (json.RawMessage, error)
 	GetUserEmail(userId uint32) (string, error)
 	UserInfo(userID uint32) (json.RawMessage, error)

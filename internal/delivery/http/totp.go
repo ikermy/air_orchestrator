@@ -18,8 +18,8 @@ import (
 type totpPendingSession struct {
 	userId    uint32
 	respId    uint64
-	confirmed int
-	disabled  int
+	confirmed bool
+	disabled  bool
 	auto      bool
 	password  string // plaintext пароль для загрузки MasterKey после 2FA
 	expiresAt time.Time

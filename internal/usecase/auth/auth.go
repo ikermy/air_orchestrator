@@ -97,8 +97,8 @@ type LoginInput struct {
 // LoginResult — результат успешной аутентификации.
 type LoginResult struct {
 	UserID      uint32
-	Confirmed   int
-	Disabled    int
+	Confirmed   bool
+	Disabled    bool
 	IsLegacy    bool
 	TOTPEnabled bool
 	Password    string // нужен для последующей загрузки MasterKey

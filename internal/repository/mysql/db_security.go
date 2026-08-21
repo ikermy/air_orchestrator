@@ -20,9 +20,9 @@ import (
 // GetAuthData возвращает данные для авторизации, ища пользователя по plaintext Email
 // (старые пользователи) или по EmailHash (мигрированные/новые пользователи).
 // isLegacy=true означает что пользователь ещё не мигрирован (EmailHash IS NULL).
-func (d *DB) GetAuthData(email, emailHMAC string) (storedHash string, userId uint32, confirmed, disabled int, isLegacy bool, err error) {
+func (d *DB) GetAuthData(email, emailHMAC string) (storedHash string, userId uint32, confirmed, disabled, isLegacy bool, err error) {
 	if email == "" && emailHMAC == "" {
-		return "", 0, 0, 0, false, fmt.Errorf("получены пустые значения")
+		return "", 0, false, false, false, fmt.Errorf("получены пустые значения")
 	}
 
 	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
@@ -41,13 +41,13 @@ func (d *DB) GetAuthData(email, emailHMAC string) (storedHash string, userId uin
 	if scanErr != nil {
 		switch {
 		case errors.Is(scanErr, context.DeadlineExceeded):
-			return "", 0, 0, 0, false, fmt.Errorf("тайм-аут (%d с) при получении данных авторизации: %w", mode.GetSQLTimeToCancel(), scanErr)
+			return "", 0, false, false, false, fmt.Errorf("тайм-аут (%d с) при получении данных авторизации: %w", mode.GetSQLTimeToCancel(), scanErr)
 		case errors.Is(scanErr, context.Canceled):
-			return "", 0, 0, 0, false, fmt.Errorf("операция отменена: %w", scanErr)
+			return "", 0, false, false, false, fmt.Errorf("операция отменена: %w", scanErr)
 		case errors.Is(scanErr, sql.ErrNoRows):
-			return "", 0, 0, 0, false, nil // пользователь не найден — не ошибка
+			return "", 0, false, false, false, nil // пользователь не найден — не ошибка
 		default:
-			return "", 0, 0, 0, false, fmt.Errorf("ошибка получения данных авторизации: %w", scanErr)
+			return "", 0, false, false, false, fmt.Errorf("ошибка получения данных авторизации: %w", scanErr)
 		}
 	}
 
