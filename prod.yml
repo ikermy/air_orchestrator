@@ -15,6 +15,7 @@ services:
       - DB_NAME=air
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
+      - NOTIF_TG_IDS=${NOTIF_TG_IDS}
       - REAL_URL=${DOMAIN}
       - GRPC_PORT=50051
       - WHATSAPP_CALLS_GRPC_ADDR=${WHATSAPP_CALLS_GRPC_ADDR:-whatsbot:9090}

@@ -69,6 +69,7 @@ jobs:
             echo "DOMAIN=${{ secrets.DOMAIN }}" >> .env
             echo "DB_USER=${{ secrets.DB_USER }}" >> .env
             echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            echo "NOTIF_TG_IDS=${{ vars.TG_IDS }}" >> .env
             chmod 600 .env
             # 2. Write permanent secret files
             if [ ! -z "${{ secrets.MYSQL_ROOT_PASSWORD }}" ]; then echo "${{ secrets.MYSQL_ROOT_PASSWORD }}" > secrets/mysql_root_password.txt; fi

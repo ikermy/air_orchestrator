@@ -52,7 +52,7 @@ func LoadNotifTgIDs() ([]int64, error) {
 		}
 		id, err := strconv.ParseInt(p, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid tg id %q: %w", p, err)
+			return nil, fmt.Errorf("invalid tg id %q: %v", p, err)
 		}
 		ids = append(ids, id)
 	}
@@ -61,7 +61,6 @@ func LoadNotifTgIDs() ([]int64, error) {
 
 // Notify отправляет уведомление администратору в зависимости от типа события.
 func (n *AdminNotifier) Notify(event EventKind, message string) {
-	//var adminTgIDS []int64={492799113} // TODO: загружать список получателей из БД по типу события
 	adminTgIDS, err := LoadNotifTgIDs()
 	if err != nil {
 		logger.Error("Ошибка получения телеграм идентификаторов для уведомлений %w", err)
