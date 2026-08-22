@@ -242,6 +242,7 @@ func (w *Web) availableHandler(c *gin.Context) {
 	defer cancel()
 	resp, err := sendRESP(respCtx, http.MethodGet, url, nil)
 	if err != nil {
+		logger.Debug("sendRESP %s вернул ошибку: %v", chType, err, userId)
 		c.Status(http.StatusServiceUnavailable)
 		return
 	}

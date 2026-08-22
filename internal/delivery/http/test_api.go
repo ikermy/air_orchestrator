@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,10 +10,45 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/ikermy/air_common/pkg/comerrors"
 	"github.com/ikermy/air_common/pkg/model"
 	"github.com/ikermy/air_common/pkg/model/commdom"
 	"github.com/ikermy/air_logger/v2/pkg/logger"
 )
+
+// providerErrorResponse writes a stable, safe API response for errors returned
+// by an AI provider. The provider's raw response is intentionally kept out of
+// the client response because it may contain internal details or credentials.
+func providerErrorResponse(c *gin.Context, err error) bool {
+	var providerErr *comerrors.ProviderError
+	if !errors.As(err, &providerErr) {
+		return false
+	}
+
+	status := http.StatusBadRequest
+	switch providerErr.Kind {
+	case comerrors.ProviderLimitErrorKind:
+		status = http.StatusTooManyRequests
+	case comerrors.ProviderAuthErrorKind:
+		status = http.StatusUnauthorized
+	case comerrors.ProviderPermissionErrorKind:
+		status = http.StatusForbidden
+	case comerrors.ProviderTimeoutErrorKind:
+		status = http.StatusGatewayTimeout
+	case comerrors.ProviderUnavailableErrorKind:
+		status = http.StatusServiceUnavailable
+	case comerrors.ProviderRequestErrorKind, comerrors.ProviderContentBlockedErrorKind:
+		status = http.StatusBadRequest
+	default:
+		status = http.StatusInternalServerError
+	}
+
+	c.JSON(status, gin.H{
+		"error":    string(providerErr.Kind),
+		"provider": providerErr.Provider.String(),
+	})
+	return true
+}
 
 // wsPingSignal — маркер-сигнал для отправки WebSocket Ping через sendBuffer.
 // Позволяет избежать concurrent write: все записи в conn проходят только через ГОРУТИНУ 2.
@@ -57,9 +93,14 @@ func (w *Web) testStartSessionHandler(c *gin.Context) {
 	session, activeModel, err := w.api.StartSession(w.ctx, userId, respId, provider)
 	if err != nil {
 		logger.Error("Ошибка запуска тестовой сессии, respId=%d, provider=%s: %v", respId, provider.String(), err, userId)
+		if providerErrorResponse(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start test session"})
 		return
 	}
+	logger.Debug("TestAPI start: userId=%d respId=%d provider=%s model=%s web_search=%v",
+		userId, respId, provider.String(), activeModel.Name, activeModel.WebSearch)
 
 	// Формируем базовый ответ
 	response := gin.H{
@@ -188,6 +229,9 @@ func (w *Web) testAskHandler(c *gin.Context) {
 		transcribedText, err := w.mod.TranscribeAudio(userId, msg.AudioData, mimeType)
 		if err != nil {
 			logger.Error("Ошибка транскрибации аудио: %v", err)
+			if providerErrorResponse(c, err) {
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("transcription failed: %v", err)})
 			return
 		}
@@ -225,9 +269,14 @@ func (w *Web) testAskHandler(c *gin.Context) {
 	// Вызываем метод API для отправки сообщения
 	if err := w.api.SendMessage(userId, respId, message); err != nil {
 		logger.Error("Ошибка отправки сообщения: %v", err)
+		if providerErrorResponse(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	logger.Debug("TestAPI message accepted: userId=%d respId=%d type=%s text_len=%d files=%d",
+		userId, respId, message.Type, len(message.Content.Message), len(message.Files))
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"status":    "message_sent",

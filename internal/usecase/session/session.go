@@ -18,7 +18,7 @@ import (
 	"github.com/ikermy/air_logger/v2/pkg/logger"
 )
 
-const DayLimitForDemoUser = 10
+//const DayLimitForDemoUser = 10
 
 // Store — минимальный интерфейс к БД для TestAPI.
 type Store interface {
@@ -260,6 +260,8 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 	if err != nil {
 		return nil, nil, fmt.Errorf("ошибка получения активной модели пользователя: %w", err)
 	}
+	logger.Debug("TestAPI: конфигурация модели загружена, userId=%d, provider=%s, model=%s, web_search=%v, search=%v, interpreter=%v",
+		userId, provider.String(), userModel.Name, userModel.WebSearch, userModel.Search, userModel.Interpreter)
 
 	// Получаем запись о модели из БД для получения AssistantId в горутине, т.к. это долгая операция с БД
 	type resultModelRecord struct {
@@ -323,6 +325,8 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 			Target: false,
 		},
 	}
+	logger.Debug("TestAPI: создаю Assistant, userId=%d, respId=%d, provider=%s, web_search=%v",
+		userId, respId, userModel.Provider.String(), userModel.WebSearch)
 
 	// Обрабатываем Espero настройки
 	assist.Limit = uint32(userModel.Espero.Limit)
@@ -377,10 +381,10 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 		IsDemo:     isDemo,
 	}
 
-	if isDemo {
-		logger.Debug("TestAPI: создана сессия для демо-пользователя, лимит=%d запросов/день",
-			DayLimitForDemoUser, userId)
-	}
+	//if isDemo {
+	//	logger.Debug("TestAPI: создана сессия для демо-пользователя, лимит=%d запросов/день",
+	//		DayLimitForDemoUser, userId)
+	//}
 
 	ta.sessions.Store(key, session)
 	metrics.ActiveTestSessions.Inc()
@@ -409,6 +413,8 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 			case err := <-errCh:
 				if err != nil {
 					logger.Error("TestAPI: ошибка от StarterListener, respId=%d: %v", respId, err, userId)
+				} else {
+					logger.Debug("TestAPI: StarterListener завершил работу без ошибки, respId=%d", respId, userId)
 				}
 			case <-sessCtx.Done():
 				return

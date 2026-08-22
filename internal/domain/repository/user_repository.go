@@ -64,6 +64,7 @@ type ModelRepository interface {
 	AddFileFromUserGPT(userId uint32, fileID, fileName string) error
 	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdb.ChatType) (uint64, error)
 	GetModelByProviderAnyStatus(userID uint32, provider commdom.ProviderType) (*commdom.UserModelRecord, error)
+	FastCheckActiveUserModel(userID uint32) (bool, error)
 }
 
 // ChannelRepository — операции с каналами связи.

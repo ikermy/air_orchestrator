@@ -68,6 +68,9 @@ func (a *App) Run() {
 	go a.web.CleanupLimiter()
 	a.cron.Start()
 
+	// Слушаю общий канал уведомлений для отправки сообщений в Instant
+	bus.Add(func(ch chan<- com.LogMsg) { a.end.NotificationListener(ch) })
+
 	go func() {
 		<-a.ctx.Done()
 		go func() {

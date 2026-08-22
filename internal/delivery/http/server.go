@@ -505,6 +505,7 @@ func (w *Web) modelRoutes(v1 *gin.RouterGroup) {
 	mod := v1.Group("/model")
 	mod.Use(w.authAllowMiddleware())
 	mod.GET("/demo", w.CheckDemoUser)
+	mod.GET("/fast-chek", w.FastCheckUserModel)
 	mod.GET("", w.ReadUserModel)
 	mod.POST("/upload-file", w.FileUpload)
 	mod.POST("/delete-file", w.FileDelete)

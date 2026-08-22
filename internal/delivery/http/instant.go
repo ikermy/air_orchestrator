@@ -47,7 +47,12 @@ func (w *Web) Instant(c *gin.Context) {
 	// Основной цикл чтения из канала и отправки сообщений
 	for {
 		select {
-		case msg := <-mode.GetInstantMsgCh():
+		case msg, ok := <-mode.GetInstantMsgCh():
+			if !ok {
+				logger.Error("InstantMsgCh закрыт")
+				return
+			}
+
 			// Отправляем сообщение только если UID совпадает с userId клиента
 			if msg.UID == userId {
 				if err := conn.WriteJSON(msg); err != nil {

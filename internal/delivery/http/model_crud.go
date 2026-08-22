@@ -1119,7 +1119,31 @@ func (w *Web) CheckDemoUser(c *gin.Context) {
 
 	status, err := w.db.CheckDemo(userId)
 	if err != nil {
-		logger.Error("'Ошибка проверки статуса демо пользователя: %v", err, userId)
+		logger.Error("Ошибка проверки статуса демо пользователя: %v", err, userId)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": status})
+}
+
+// FastCheckUserModel godoc
+// @Summary Проверить наличие модели у пользователя
+// @Tags model
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]any
+// @Failure 401 {object} map[string]string
+// @Router /fast-chek [get]
+func (w *Web) FastCheckUserModel(c *gin.Context) {
+	userId, ok := getUserID(c)
+	if !ok {
+		return
+	}
+
+	status, err := w.db.FastCheckActiveUserModel(userId)
+	if err != nil {
+		logger.Error("Ошибка проверки наличия модели у пользователя: %v", err, userId)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}

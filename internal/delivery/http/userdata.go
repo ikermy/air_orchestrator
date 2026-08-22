@@ -50,7 +50,7 @@ func (w *Web) UserData(c *gin.Context) {
 // @Tags ws
 // @Produce text/event-stream
 // @Security BearerAuth
-// @Router /ws/deleteall [get]
+// @Router /ws/delete-all [get]
 func (w *Web) DeleteAllUserDataWSSHandler(c *gin.Context) {
 	conn, err := upgradeWebSocket(c)
 	if err != nil {
@@ -111,13 +111,13 @@ func (w *Web) DeleteAllUserDataWSS(conn *websocket.Conn, userID uint32) {
 	// 2. Отключаем все каналы в БД
 	if err := w.db.DisableAllUserChannel(userID); err != nil {
 		progressCallback("❌ Ошибка отключения каналов")
-		return
+		logger.Warn("Ошибка отключения каналов при удалении всех данных пользователя:%v", err, userID)
 	}
 
 	// 2.1 Отправляю команду на остановку сервисов
 	if err := CallStopForAllUserServices(userID); err != nil {
 		progressCallback("❌ Ошибка остановки сервисов")
-		return
+		logger.Warn("Ошибка остановки сервисов при удалении всех данных пользователя:%v", err, userID)
 	}
 
 	time.Sleep(10 * time.Second) // Жду чтобы в кроне успела сработать _scheduler_ResetUserFlags
