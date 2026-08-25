@@ -1,6 +1,6 @@
 # AiR_Orchestrator
 
-![air_orchestrator](air_orchestrator_logo.png)
+![air_orchestrator](logo.png)
 
 [🇬🇧 English version](README.md)
 
@@ -93,9 +93,10 @@ docker compose -f dev.yml up -d
 - [gRPC-контракт звонков](internal/delivery/grpc/v1/calls.proto)
 - [Конфигурация Prometheus](monitoring/prometheus.yml)
 
-## Связанные сервисы
+## Экосистема marusia_ai
 
-- [air_common](https://github.com/ikermy/air_common) — общая библиотека для AI‑микросервисов
+- [air-common](https://github.com/ikermy/air-common) — общая библиотека для AI‑микросервисов
+- [air_orchestrator](https://github.com/ikermy/air_orchestrator) — главный сервис оркестратор
 - [air_front](https://github.com/ikermy/air_front) — Frontend react next.js панель управления моделями, каналами взаимодействия, сервисами...
 - [air_tgbot](https://github.com/ikermy/air_tgbot) — Telegram Bot работа в режиме polling/webhook с возможностью стриминга дельт
 - [air_tguserbot](https://github.com/ikermy/air_tguserbot) — Telegram пользовательский бот с возможностью принимать и совершать голосовые звонки
@@ -106,7 +107,7 @@ docker compose -f dev.yml up -d
 - [air_lead-hunter](https://github.com/ikermy/air_lead-hunter) — Сервис поиска лидов ботами в Telegram и WhatsApp, в том числе с исходящими голосовыми вызовами
 - [air_payment](https://github.com/ikermy/air_payment) — Сервис приёма криптоплатежей от пользователей через Bybit
 - [marusia_crm](https://github.com/ikermy/marusia_crm) — Сервис интеграции с внешними CRM системами
-- [air_logger](https://github.com/ikermy/air_logger) — Вспомогательный сервис логирования событий с поддержкой многопользовательского режима и поддержкой сборщика логов loki
+- [air-logger](https://github.com/ikermy/air-logger) — Вспомогательный сервис логирования событий с поддержкой многопользовательского режима и поддержкой сборщика логов loki
 
 
 ## Лицензия

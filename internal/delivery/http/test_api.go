@@ -10,10 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air_common/pkg/comerrors"
-	"github.com/ikermy/air_common/pkg/model"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/pkg/comerrors"
+	"github.com/ikermy/air-common/pkg/model"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // providerErrorResponse writes a stable, safe API response for errors returned
@@ -83,8 +83,8 @@ func (w *Web) testStartSessionHandler(c *gin.Context) {
 		return
 	}
 
-	// Преобразуем строковый provider в commdom.ProviderType
-	provider, err := commdom.FromString(prov)
+	// Преобразуем строковый provider в comdom.ProviderType
+	provider, err := comdom.FromString(prov)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid provider: %s", prov)})
 		return

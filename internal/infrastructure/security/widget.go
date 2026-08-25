@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/ikermy/air_common/pkg/rpc/proto"
+	"github.com/ikermy/air-common/pkg/rpc/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

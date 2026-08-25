@@ -8,9 +8,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air_common/pkg/comdb"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdb"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // Store — интерфейс к БД для MCP-хендлера.
@@ -22,7 +22,7 @@ type Store interface {
 
 // ModelStore — интерфейс к хранилищу моделей пользователей.
 type ModelStore interface {
-	GetUserModels(userId uint32) ([]commdom.UniversalModelData, error)
+	GetUserModels(userId uint32) ([]comdom.UniversalModelData, error)
 }
 
 // LeadTargetFn — тип колбэка для вызова Meta-сервиса lead/target.

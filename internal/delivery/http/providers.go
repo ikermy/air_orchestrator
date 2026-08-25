@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // ProvidersWithApiKeys godoc
@@ -55,7 +55,7 @@ func (w *Web) RevokeUserAPIKey(c *gin.Context) {
 		return
 	}
 
-	provider, err := commdom.FromString(providerStr)
+	provider, err := comdom.FromString(providerStr)
 	if err != nil || provider == 0 {
 		logger.Error("Неверный providerStr: %s", providerStr)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid provider"})
@@ -108,7 +108,7 @@ func (w *Web) SetUserAPIKey(c *gin.Context) {
 		return
 	}
 
-	provider, err := commdom.FromString(providerStr)
+	provider, err := comdom.FromString(providerStr)
 	if err != nil || provider == 0 {
 		logger.Error("Неверный provider: %s", providerStr)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid provider"})

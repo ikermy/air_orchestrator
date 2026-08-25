@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // newStorageServices reads MinIO env vars, builds the storage backend and

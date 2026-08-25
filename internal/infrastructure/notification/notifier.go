@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // AdminNotifier отправляет уведомления администраторам через Telegram-бот.

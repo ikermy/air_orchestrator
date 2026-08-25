@@ -5,17 +5,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ikermy/air_common/pkg/comdb"
-	"github.com/ikermy/air_common/pkg/endpoint"
-	"github.com/ikermy/air_common/pkg/model"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_common/pkg/model/create"
-	"github.com/ikermy/air_common/pkg/startpoint"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/pkg/endpoint"
+	"github.com/ikermy/air-common/pkg/model"
+	"github.com/ikermy/air-common/pkg/model/create"
+	"github.com/ikermy/air-common/pkg/startpoint"
 
 	"sync"
 	"time"
 
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 //const DayLimitForDemoUser = 10
@@ -23,8 +22,8 @@ import (
 // Store — минимальный интерфейс к БД для TestAPI.
 type Store interface {
 	CheckDemo(userId uint32) (bool, error)
-	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdb.ChatType) (uint64, error)
-	GetModelByProviderAnyStatus(userID uint32, provider commdom.ProviderType) (*commdom.UserModelRecord, error)
+	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdom.ChatType) (uint64, error)
+	GetModelByProviderAnyStatus(userID uint32, provider comdom.ProviderType) (*comdom.UserModelRecord, error)
 }
 
 // ============================================================================
@@ -101,7 +100,7 @@ type TestAPI struct {
 	ctx      context.Context // контекст для управления жизненным циклом фоновых горутин
 }
 
-func (ta *TestAPI) getUserModel(userId uint32, provider commdom.ProviderType) (*commdom.UniversalModelData, error) {
+func (ta *TestAPI) getUserModel(userId uint32, provider comdom.ProviderType) (*comdom.UniversalModelData, error) {
 	userModel, err := ta.mod.GetUserModelByProvider(userId, provider)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения активной модели пользователя: %w", err)
@@ -189,7 +188,7 @@ func (ta *TestAPI) sessionKey(userId uint32, respId uint64) string {
 }
 
 // StartSession запускает новую тестовую сессию
-func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint64, provider commdom.ProviderType) (*TestSession, *commdom.UniversalModelData, error) {
+func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint64, provider comdom.ProviderType) (*TestSession, *comdom.UniversalModelData, error) {
 	key := ta.sessionKey(userId, respId)
 
 	if existing, ok := ta.sessions.Load(key); ok {
@@ -238,7 +237,7 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 	go func() {
 		defer close(resultCh)
 
-		treadId, err := ta.store.GetOrSetTreadAndResponder(userId, respId, "test_responder", comdb.Web) // ChatType = web (1)
+		treadId, err := ta.store.GetOrSetTreadAndResponder(userId, respId, "test_responder", comdom.Web) // ChatType = web (1)
 		resultCh <- resultTread{treadId, err}
 	}()
 
@@ -265,7 +264,7 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 
 	// Получаем запись о модели из БД для получения AssistantId в горутине, т.к. это долгая операция с БД
 	type resultModelRecord struct {
-		modelRecord *commdom.UserModelRecord
+		modelRecord *comdom.UserModelRecord
 		err         error
 	}
 	resModelCh := make(chan resultModelRecord, 1)
@@ -277,7 +276,7 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 
 	// Ждем завершения горутин параллельно
 	var treadId uint64
-	var modelRecord *commdom.UserModelRecord
+	var modelRecord *comdom.UserModelRecord
 	var isDemo bool
 	var completedCount int
 
@@ -426,7 +425,7 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 }
 
 // GetSessionModel возвращает данные модели для активной сессии
-func (ta *TestAPI) GetSessionModel(userId uint32, respId uint64, provider commdom.ProviderType) (*commdom.UniversalModelData, error) {
+func (ta *TestAPI) GetSessionModel(userId uint32, respId uint64, provider comdom.ProviderType) (*comdom.UniversalModelData, error) {
 	key := ta.sessionKey(userId, respId)
 
 	_, ok := ta.sessions.Load(key)
@@ -583,7 +582,7 @@ func (ta *TestAPI) getRealtimeProvider(userId uint32, respId uint64) (model.Real
 	// 2. По наличию активной realtime-сессии у провайдера
 	// (для случая когда TestSession уже удалена CleanupWebSocketSession,
 	// но realtime-сессия ещё активна — вызовы GetRealtimeChannels, SendRealtimeAudio и т.д.)
-	for _, provType := range []commdom.ProviderType{commdom.ProviderOpenAI, commdom.ProviderGoogle, commdom.ProviderMistral} {
+	for _, provType := range []comdom.ProviderType{comdom.ProviderOpenAI, comdom.ProviderGoogle, comdom.ProviderMistral} {
 		pmRaw := ta.mod.GetProviderModel(provType)
 		if pmRaw != nil {
 			if rp, ok := pmRaw.(model.RealtimeProvider); ok {

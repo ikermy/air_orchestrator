@@ -5,11 +5,11 @@ import (
 	"errors"
 	"time"
 
-	repository "air_orchestrator/internal/domain/repository"
+	"air_orchestrator/internal/domain/repository"
 
-	"github.com/ikermy/air_common/pkg/com"
-	"github.com/ikermy/air_common/pkg/endpoint"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/com"
+	"github.com/ikermy/air-common/pkg/endpoint"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/calendar/v3"

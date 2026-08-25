@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ikermy/air_common/pkg/google_services"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/pkg/google_services"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // ========== Типы инструментов ==========
@@ -37,7 +37,7 @@ type toolResult struct {
 
 // buildToolsList возвращает инструменты, доступные пользователю,
 // на основе флагов его модели (S3, GOAuth.Calendar, GOAuth.Sheets).
-func (h *Handler) buildToolsList(userId uint32, provider commdom.ProviderType) ([]tool, error) {
+func (h *Handler) buildToolsList(userId uint32, provider comdom.ProviderType) ([]tool, error) {
 	// get_current_time доступен всегда
 	tools := []tool{
 		{
@@ -53,7 +53,7 @@ func (h *Handler) buildToolsList(userId uint32, provider commdom.ProviderType) (
 		return tools, nil // минимальный набор при ошибке
 	}
 
-	var modelData *commdom.UniversalModelData
+	var modelData *comdom.UniversalModelData
 	for i := range models {
 		if models[i].Provider == provider {
 			modelData = &models[i]
@@ -437,7 +437,7 @@ func (h *Handler) toolSheetsAppend(ctx context.Context, args json.RawMessage, us
 
 // getUserModel возвращает модель пользователя для указанного провайдера.
 // Возвращает nil если модель не найдена или произошла ошибка.
-func (h *Handler) getUserModel(userId uint32, provider commdom.ProviderType) *commdom.UniversalModelData {
+func (h *Handler) getUserModel(userId uint32, provider comdom.ProviderType) *comdom.UniversalModelData {
 	models, err := h.mod.GetUserModels(userId)
 	if err != nil {
 		logger.Error("MCP getUserModel: %v", err, userId)
@@ -454,7 +454,7 @@ func (h *Handler) getUserModel(userId uint32, provider commdom.ProviderType) *co
 // buildSystemPromptHint формирует компактные инструкции по использованию инструментов
 // на основе флагов модели пользователя. Не содержит артефактов text-mode —
 // используется одинаково для text и Realtime (голосового) режимов.
-func (h *Handler) buildSystemPromptHint(userId uint32, provider commdom.ProviderType) string {
+func (h *Handler) buildSystemPromptHint(userId uint32, provider comdom.ProviderType) string {
 	m := h.getUserModel(userId, provider)
 
 	var parts []string

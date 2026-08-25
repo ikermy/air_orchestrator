@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ikermy/air_common/pkg/model/commdom"
+	"github.com/ikermy/air-common/pkg/comdom"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,7 +28,7 @@ type CallsProxy struct {
 }
 
 type ActiveModelProvider interface {
-	GetActiveUserModel(userID uint32) (*commdom.UniversalModelData, error)
+	GetActiveUserModel(userID uint32) (*comdom.UniversalModelData, error)
 }
 
 type DB interface {

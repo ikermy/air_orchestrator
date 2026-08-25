@@ -8,6 +8,7 @@ const (
 	GrpcKeyMeta         = "x-service-key"
 	NewUserStorageLimit = 524288000
 	DefaultCurrency     = 0 // по умолчанию USDT
+	TOTPName            = "MarusiaAI"
 )
 
 // ─── Runtime-переменные приложения ────────────────────────────────────────────

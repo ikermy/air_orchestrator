@@ -5,13 +5,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ikermy/air_common/pkg/model/commdom"
+	"github.com/ikermy/air-common/pkg/comdom"
 )
 
 // ParseSessionID разбирает заголовок X-Session-ID формата "userId:providerType".
 // userId — реальный (не кодированный) uint32.
-// providerType — числовое значение commdom.ProviderType.
-func ParseSessionID(header string) (userId uint32, provider commdom.ProviderType, err error) {
+// providerType — числовое значение comdom.ProviderType.
+func ParseSessionID(header string) (userId uint32, provider comdom.ProviderType, err error) {
 	parts := strings.SplitN(header, ":", 2)
 	if len(parts) != 2 {
 		return 0, 0, fmt.Errorf("invalid X-Session-ID format, expected userId:providerType")
@@ -24,5 +24,5 @@ func ParseSessionID(header string) (userId uint32, provider commdom.ProviderType
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid providerType: %w", err)
 	}
-	return uint32(uid), commdom.ProviderType(pt), nil
+	return uint32(uid), comdom.ProviderType(pt), nil
 }

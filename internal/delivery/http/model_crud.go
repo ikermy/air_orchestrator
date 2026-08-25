@@ -15,8 +15,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // ListMistralVoices godoc
@@ -90,7 +90,7 @@ func (w *Web) UpdateMistralVoice(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-	var request commdom.UpdateVoiceRequest
+	var request comdom.UpdateVoiceRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -162,16 +162,16 @@ func (w *Web) GetMistralVoiceSample(c *gin.Context) {
 	c.DataFromReader(http.StatusOK, -1, contentType, sample, nil)
 }
 
-func (w *Web) getOwnedCustomVoice(userID uint32, voiceID string) (commdom.Voice, error) {
+func (w *Web) getOwnedCustomVoice(userID uint32, voiceID string) (comdom.Voice, error) {
 	_ = userID // Router scopes the lookup to the authenticated user's Mistral account.
 	voice, err := w.mod.GetMistralVoice(userID, voiceID)
 	if err != nil {
-		return commdom.Voice{}, err
+		return comdom.Voice{}, err
 	}
 	// Preset voices are readable, but cannot be changed or deleted through the
 	// custom voice API. Mistral custom voices carry the owning user ID.
 	if voice.UserID == nil || strings.TrimSpace(*voice.UserID) == "" {
-		return commdom.Voice{}, fmt.Errorf("preset voice cannot be modified")
+		return comdom.Voice{}, fmt.Errorf("preset voice cannot be modified")
 	}
 	return voice, nil
 }
@@ -195,8 +195,8 @@ func (w *Web) CloneMistralVoice(c *gin.Context) {
 		providerName = strings.TrimSpace(c.Query("provider"))
 	}
 
-	provider, err := commdom.FromString(providerName)
-	if err != nil || provider != commdom.ProviderMistral {
+	provider, err := comdom.FromString(providerName)
+	if err != nil || provider != comdom.ProviderMistral {
 		logger.Error("Неподдерживаемый провайдер", userID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "provider=mistral is required"})
 		return
@@ -250,7 +250,7 @@ func (w *Web) CloneMistralVoice(c *gin.Context) {
 	if value := strings.TrimSpace(c.PostForm("description")); value != "" {
 		description = &value
 	}
-	data, err := w.mod.GetUserModelByProvider(userID, commdom.ProviderMistral)
+	data, err := w.mod.GetUserModelByProvider(userID, comdom.ProviderMistral)
 	if err != nil || data == nil {
 		logger.Error("Ошибка err != nil || data == nil")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Mistral model not found"})
@@ -265,21 +265,21 @@ func (w *Web) CloneMistralVoice(c *gin.Context) {
 			oldVoiceID = data.RealtimeVAD.Mistral.VoiceClone.ProfileID
 		}
 	}
-	voice, err := w.mod.CreateMistralVoice(userID, commdom.CreateVoiceRequest{Name: name, SampleAudio: base64.StdEncoding.EncodeToString(audio), SampleFilename: &header.Filename, Languages: languages, Tags: tags, Gender: gender, Description: description})
+	voice, err := w.mod.CreateMistralVoice(userID, comdom.CreateVoiceRequest{Name: name, SampleAudio: base64.StdEncoding.EncodeToString(audio), SampleFilename: &header.Filename, Languages: languages, Tags: tags, Gender: gender, Description: description})
 	if err != nil {
 		logger.Error("Ошибка создания голоса %v", err, userID)
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 	if data.RealtimeVAD == nil {
-		data.RealtimeVAD = &commdom.RealtimeVAD{}
+		data.RealtimeVAD = &comdom.RealtimeVAD{}
 	}
 	if data.RealtimeVAD.Mistral == nil {
-		data.RealtimeVAD.Mistral = &commdom.MistralRealtimeVAD{}
+		data.RealtimeVAD.Mistral = &comdom.MistralRealtimeVAD{}
 	}
 	data.RealtimeVAD.Mistral.VoiceID = &voice.ID
 	if data.RealtimeVAD.Mistral.VoiceClone == nil {
-		data.RealtimeVAD.Mistral.VoiceClone = &commdom.MistralVoiceCloneConfig{}
+		data.RealtimeVAD.Mistral.VoiceClone = &comdom.MistralVoiceCloneConfig{}
 	}
 	data.RealtimeVAD.Mistral.VoiceClone.Enabled = true
 	data.RealtimeVAD.Mistral.VoiceClone.ProfileID = voice.ID
@@ -335,7 +335,7 @@ func validateVoiceAudio(header *multipart.FileHeader, audio []byte) error {
 // getProvider извлекает provider из контекста Gin
 // Возвращает provider и true при успехе, 0 и false при ошибке
 // При ошибке автоматически отправляет HTTP ответ и вызывает c.Abort()
-func getProvider(c *gin.Context) (commdom.ProviderType, bool) {
+func getProvider(c *gin.Context) (comdom.ProviderType, bool) {
 	prov, ok := c.Get("provider")
 	if !ok || prov == nil {
 		logger.Error("Ошибка получения провайдера из контекста: %s", c.Request.RequestURI)
@@ -344,10 +344,10 @@ func getProvider(c *gin.Context) (commdom.ProviderType, bool) {
 	}
 
 	switch provider := prov.(type) {
-	case commdom.ProviderType:
+	case comdom.ProviderType:
 		return provider, true
 	case string:
-		parsed, err := commdom.FromString(provider)
+		parsed, err := comdom.FromString(provider)
 		if err != nil {
 			logger.Error("Неверный тип провайдера: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid provider format"})
@@ -424,7 +424,7 @@ func (w *Web) List(c *gin.Context) {
 
 	var (
 		err       error
-		modelType commdom.ModelType
+		modelType comdom.ModelType
 		done      bool
 	)
 	// В горутине только для обработки ошибок что бы выйти из неё и продолжить если что
@@ -434,7 +434,7 @@ func (w *Web) List(c *gin.Context) {
 		defer wg.Done()
 
 		modelTypeStr := c.Query("type") // "general" или "realtime"
-		modelType, err = commdom.ModelTypeFromString(modelTypeStr)
+		modelType, err = comdom.ModelTypeFromString(modelTypeStr)
 		if err != nil {
 			// обработка ошибки
 			return
@@ -444,7 +444,7 @@ func (w *Web) List(c *gin.Context) {
 			return
 		}
 
-		res, err := w.mod.UpdateModelsListByProvider(shortCtx, commdom.Union{
+		res, err := w.mod.UpdateModelsListByProvider(shortCtx, comdom.Union{
 			Provider:  provider,
 			ModelType: modelType,
 		}, apiKey)
@@ -465,7 +465,7 @@ func (w *Web) List(c *gin.Context) {
 	}
 
 	// Для Mistral TSS модель не хранятся в таблице БД выходим с ошибкой
-	if provider == commdom.ProviderMistral {
+	if provider == comdom.ProviderMistral {
 		logger.Error("Для Мистраль не получены Realtime модели")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "mistral realtime models not found"})
 		return
@@ -584,7 +584,7 @@ func (w *Web) FileDelete(c *gin.Context) {
 
 	// Для OpenAI дополнительно удаляем из старого формата БД
 	// Для Mistral удаление из БД уже выполнено в DeleteDocumentFromLibrary
-	if provider == commdom.ProviderOpenAI {
+	if provider == comdom.ProviderOpenAI {
 		err = w.db.DeleteFileFromUserGPT(userId, requestData.FileID)
 		if err != nil {
 			logger.Error("'FileDelete' Ошибка при удалении файла из БД: %v", err, userId)
@@ -703,14 +703,14 @@ func (w *Web) CreateModel(c *gin.Context) {
 		return
 	}
 
-	provider, ok := prov.(commdom.ProviderType)
+	provider, ok := prov.(comdom.ProviderType)
 	if !ok {
 		logger.Error("'CreateModelRequest' неверный тип провайдера", userId)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid provider format"})
 		return
 	}
 
-	var requestData commdom.UniversalModelData
+	var requestData comdom.UniversalModelData
 
 	if err := c.ShouldBindJSON(&requestData); err != nil {
 		logger.Error("'CreateModelRequest' Ошибка парсинга JSON: %v", err)
@@ -722,10 +722,10 @@ func (w *Web) CreateModel(c *gin.Context) {
 	// по умолчанию в зависимости от провайдера
 	if requestData.UseModelName == nil {
 		// Маппинг провайдеров на их имена в БД
-		providerNames := map[commdom.ProviderType]string{
-			commdom.ProviderOpenAI:  "OpenAI",
-			commdom.ProviderMistral: "Mistral",
-			commdom.ProviderGoogle:  "Google",
+		providerNames := map[comdom.ProviderType]string{
+			comdom.ProviderOpenAI:  "OpenAI",
+			comdom.ProviderMistral: "Mistral",
+			comdom.ProviderGoogle:  "Google",
 		}
 
 		providerName, exists := providerNames[provider]
@@ -750,23 +750,23 @@ func (w *Web) CreateModel(c *gin.Context) {
 			return
 		}
 
-		requestData.UseModelName = &commdom.UseModelName{
-			GptType: &commdom.GptType{
+		requestData.UseModelName = &comdom.UseModelName{
+			GptType: &comdom.GptType{
 				Name: def.GeneralModelName,
 				ID:   def.GeneralModelID,
 			},
-			Realtime: &commdom.Realtime{
+			Realtime: &comdom.Realtime{
 				Name: def.RealTimeModelName,
 				ID:   def.RealTimeModelID,
 			},
 		}
 	}
 
-	// Преобразуем FileIDsWrapper в []commdom.Ids
-	var fileIDs []commdom.Ids
+	// Преобразуем FileIDsWrapper в []comdom.Ids
+	var fileIDs []comdom.Ids
 	if len(requestData.FileIds) > 0 {
 		for _, file := range requestData.FileIds {
-			fileIDs = append(fileIDs, commdom.Ids{ID: file.ID, Name: file.Name})
+			fileIDs = append(fileIDs, comdom.Ids{ID: file.ID, Name: file.Name})
 		}
 	}
 	// Создаём модель у провайдера
@@ -778,7 +778,7 @@ func (w *Web) CreateModel(c *gin.Context) {
 	}
 
 	// Сохраняем модель в БД
-	universalData := &commdom.UniversalModelData{
+	universalData := &comdom.UniversalModelData{
 		Name:         requestData.Name,
 		Prompt:       requestData.Prompt,
 		MetaAction:   requestData.MetaAction,
@@ -831,7 +831,7 @@ func (w *Web) UpdateModel(c *gin.Context) {
 		return
 	}
 
-	var requestData commdom.UniversalModelData
+	var requestData comdom.UniversalModelData
 
 	if err := c.ShouldBindJSON(&requestData); err != nil {
 		logger.Error("'UpdateModel' Ошибка парсинга JSON: %v", err)
@@ -843,10 +843,10 @@ func (w *Web) UpdateModel(c *gin.Context) {
 	// по умолчанию в зависимости от провайдера
 	if requestData.UseModelName == nil {
 		// Маппинг провайдеров на их имена в БД
-		providerNames := map[commdom.ProviderType]string{
-			commdom.ProviderOpenAI:  "OpenAI",
-			commdom.ProviderMistral: "Mistral",
-			commdom.ProviderGoogle:  "Google",
+		providerNames := map[comdom.ProviderType]string{
+			comdom.ProviderOpenAI:  "OpenAI",
+			comdom.ProviderMistral: "Mistral",
+			comdom.ProviderGoogle:  "Google",
 		}
 
 		providerName, exists := providerNames[provider]
@@ -867,12 +867,12 @@ func (w *Web) UpdateModel(c *gin.Context) {
 
 		logger.Debug("Устанавливаю значения по умолчанию %w", def, userId)
 
-		requestData.UseModelName = &commdom.UseModelName{
-			GptType: &commdom.GptType{
+		requestData.UseModelName = &comdom.UseModelName{
+			GptType: &comdom.GptType{
 				Name: def.GeneralModelName,
 				ID:   def.GeneralModelID,
 			},
-			Realtime: &commdom.Realtime{
+			Realtime: &comdom.Realtime{
 				Name: def.RealTimeModelName,
 				ID:   def.RealTimeModelID,
 			},
@@ -882,15 +882,15 @@ func (w *Web) UpdateModel(c *gin.Context) {
 			providerName, requestData.UseModelName.GptType.Name, requestData.UseModelName.GptType.ID, userId)
 	}
 
-	// Преобразуем FileIDsWrapper в []commdom.Ids
-	var fileIDs []commdom.Ids
+	// Преобразуем FileIDsWrapper в []comdom.Ids
+	var fileIDs []comdom.Ids
 	if len(requestData.FileIds) > 0 {
 		for _, file := range requestData.FileIds {
-			fileIDs = append(fileIDs, commdom.Ids{ID: file.ID, Name: file.Name})
+			fileIDs = append(fileIDs, comdom.Ids{ID: file.ID, Name: file.Name})
 		}
 	}
 	// Создаём UniversalModelData для обновления
-	universalData := &commdom.UniversalModelData{
+	universalData := &comdom.UniversalModelData{
 		Name:         requestData.Name,
 		Prompt:       requestData.Prompt,
 		MetaAction:   requestData.MetaAction,
@@ -953,7 +953,7 @@ func (w *Web) DeleteModelWSSHandler(c *gin.Context) {
 		return
 	}
 
-	provider, ok := prov.(commdom.ProviderType)
+	provider, ok := prov.(comdom.ProviderType)
 	if !ok {
 		logger.Error("DeleteModelWSSHandler неверный тип провайдера: %T", prov)
 		if err := conn.WriteMessage(websocket.TextMessage, []byte("❌ Неверный формат провайдера")); err != nil {
@@ -963,7 +963,7 @@ func (w *Web) DeleteModelWSSHandler(c *gin.Context) {
 	}
 
 	// Проверяем валидность провайдера
-	if provider != commdom.ProviderOpenAI && provider != commdom.ProviderMistral && provider != commdom.ProviderGoogle {
+	if provider != comdom.ProviderOpenAI && provider != comdom.ProviderMistral && provider != comdom.ProviderGoogle {
 		logger.Error("DeleteModelWSSHandler неподдерживаемый провайдер: %v", provider)
 		if err := conn.WriteMessage(websocket.TextMessage, []byte("❌ Неверный провайдер")); err != nil {
 			logger.Error("Ошибка отправки WebSocket сообщения: %v", err)
@@ -986,9 +986,9 @@ func (w *Web) DeleteModelWSSHandler(c *gin.Context) {
 	w.DeleteModelWSS(conn, userId, provider)
 }
 
-func (w *Web) DeleteModelWSS(conn *websocket.Conn, userId uint32, provider commdom.ProviderType) {
+func (w *Web) DeleteModelWSS(conn *websocket.Conn, userId uint32, provider comdom.ProviderType) {
 	voiceIDs := make([]string, 0, 2)
-	if provider == commdom.ProviderMistral {
+	if provider == comdom.ProviderMistral {
 		if data, err := w.mod.GetUserModelByProvider(userId, provider); err == nil && data != nil {
 			voiceIDs = mistralVoiceIDs(data)
 		} else if err != nil {
@@ -1016,7 +1016,7 @@ func (w *Web) DeleteModelWSS(conn *websocket.Conn, userId uint32, provider commd
 
 	// Модель уже удалена. Best-effort удаляем связанные Mistral voice profiles
 	// тремя попытками и сообщаем о проблеме клиенту без отката удаления модели.
-	if provider == commdom.ProviderMistral {
+	if provider == comdom.ProviderMistral {
 		for _, voiceID := range voiceIDs {
 			if err := w.deleteMistralVoiceWithRetry(userId, voiceID); err != nil {
 				errorMsg := fmt.Sprintf("❌ Модель удалена, но voice profile %s не удалён: %v", voiceID, err)
@@ -1035,7 +1035,7 @@ func (w *Web) DeleteModelWSS(conn *websocket.Conn, userId uint32, provider commd
 	}
 }
 
-func mistralVoiceIDs(data *commdom.UniversalModelData) []string {
+func mistralVoiceIDs(data *comdom.UniversalModelData) []string {
 	if data == nil || data.RealtimeVAD == nil || data.RealtimeVAD.Mistral == nil {
 		return nil
 	}

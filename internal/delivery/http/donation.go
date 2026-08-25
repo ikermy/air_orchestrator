@@ -8,7 +8,7 @@ import (
 	"net/url"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // donationCurrencies godoc

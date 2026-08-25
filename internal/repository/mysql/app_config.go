@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ikermy/air_common/pkg/mode"
+	"github.com/ikermy/air-common/pkg/mode"
 )
 
 // SetAppConfig сохраняет или обновляет значение конфигурации.

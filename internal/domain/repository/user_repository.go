@@ -7,9 +7,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/ikermy/air_common/pkg/com"
-	"github.com/ikermy/air_common/pkg/comdb"
-	"github.com/ikermy/air_common/pkg/model/commdom"
+	"github.com/ikermy/air-common/pkg/com"
+	"github.com/ikermy/air-common/pkg/comdb"
+	"github.com/ikermy/air-common/pkg/comdom"
 	"golang.org/x/oauth2"
 )
 
@@ -52,7 +52,6 @@ type UserRepository interface {
 	DeleteAllUserData(userID uint32) error
 	SaveUserTimeZone(userID uint32, timeZone string) error
 	SetUsersSubscriptionNotified(users []uint32) error
-	GetOrSetUserStorageLimit(userID uint32, delta int64) (uint64, uint64, error)
 	SaveUserLanguage(userID uint32, language string) error
 }
 
@@ -62,8 +61,8 @@ type ModelRepository interface {
 	UpdateDevGPTModel(provider string, modId uint8) error
 	DeleteFileFromUserGPT(userId uint32, fileID string) error
 	AddFileFromUserGPT(userId uint32, fileID, fileName string) error
-	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdb.ChatType) (uint64, error)
-	GetModelByProviderAnyStatus(userID uint32, provider commdom.ProviderType) (*commdom.UserModelRecord, error)
+	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdom.ChatType) (uint64, error)
+	GetModelByProviderAnyStatus(userID uint32, provider comdom.ProviderType) (*comdom.UserModelRecord, error)
 	FastCheckActiveUserModel(userID uint32) (bool, error)
 }
 

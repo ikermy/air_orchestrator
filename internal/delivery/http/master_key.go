@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // TODO сделать передачу не значений а value для поддержки мультиязычности

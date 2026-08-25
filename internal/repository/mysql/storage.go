@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ikermy/air_common/pkg/crypto"
+	"github.com/ikermy/air-common/pkg/crypto"
 )
 
 func (d *DB) StorageConfig(ctx context.Context, userID uint32) (storage.BackendConfig, error) {

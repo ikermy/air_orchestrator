@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // extractToken извлекает токен из запроса в соответствии с RFC 6750 и WebSocket best practices
@@ -126,7 +126,7 @@ func (w *Web) authAllowMiddleware() gin.HandlerFunc {
 
 		// Извлекаем провайдера из query-параметров для всех типов запросов (если он есть)
 		if providerParam := c.Query("provider"); providerParam != "" {
-			provider, err := commdom.FromString(providerParam)
+			provider, err := comdom.FromString(providerParam)
 			if err != nil {
 				logger.Error("'authAllowMiddleware' Ошибка получения провайдера: %v", err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

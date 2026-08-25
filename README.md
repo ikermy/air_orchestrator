@@ -1,6 +1,6 @@
 # AiR_Orchestrator
 
-![air_orchestrator](air_orchestrator_logo.png)
+![air_orchestrator](logo.png)
 
 [🇷🇺 Русская версия](README.ru.md)
 
@@ -93,9 +93,10 @@ Use `prod.yml` for production. Secrets are mounted from `secrets/` and must not 
 - [Calls gRPC contract](internal/delivery/grpc/v1/calls.proto)
 - [Prometheus configuration](monitoring/prometheus.yml)
 
-## Related Services
+## Ecosystem marusia_ai
 
-- [air_common](https://github.com/ikermy/air_common) — shared library for AI microservices
+- [air-common](https://github.com/ikermy/air-common) — shared library for AI microservices
+- [air_orchestrator](https://github.com/ikermy/air_orchestrator) — main orchestration service
 - [air_tgbot](https://github.com/ikermy/air_tgbot) — Telegram Bot operating in polling/webhook mode with delta streaming support
 - [air_tguserbot](https://github.com/ikermy/air_tguserbot) — Telegram user bot capable of receiving and making voice calls
 - [air_whatsbot](https://github.com/ikermy/air_whatsbot) — WhatsApp user bot without using the Graph API, capable of receiving and making voice calls
@@ -105,7 +106,7 @@ Use `prod.yml` for production. Secrets are mounted from `secrets/` and must not 
 - [air_lead-hunter](https://github.com/ikermy/air_lead-hunter) — service for bots to find leads in Telegram and WhatsApp, including outgoing voice calls
 - [air_payment](https://github.com/ikermy/air_payment) — service for accepting cryptocurrency payments from users through Bybit
 - [marusia_crm](https://github.com/ikermy/marusia_crm) — integration service for external CRM systems
-- [air_logger](https://github.com/ikermy/air_logger) — auxiliary event-logging service with multi-user mode and Loki collector support
+- [air-logger](https://github.com/ikermy/air-logger) — auxiliary event-logging service with multi-user mode and Loki collector support
 
 ## License
 

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air_common/pkg/mode"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // totpPendingSession — временная запись между первым и вторым фактором входа.

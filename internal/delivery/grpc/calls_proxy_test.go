@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/ikermy/air_common/pkg/model/commdom"
+	"github.com/ikermy/air-common/pkg/comdom"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
@@ -20,7 +20,7 @@ type mockCallsBackend struct {
 }
 
 type mockActiveModelProvider struct {
-	model *commdom.UniversalModelData
+	model *comdom.UniversalModelData
 }
 
 type mockDemoChecker struct {
@@ -30,16 +30,16 @@ type mockDemoChecker struct {
 
 func (m mockDemoChecker) CheckDemo(uint32) (bool, error) { return m.isDemo, m.err }
 
-func (m mockActiveModelProvider) GetActiveUserModel(uint32) (*commdom.UniversalModelData, error) {
+func (m mockActiveModelProvider) GetActiveUserModel(uint32) (*comdom.UniversalModelData, error) {
 	return m.model, nil
 }
 
 func validCallModel() mockActiveModelProvider {
 	initialGreeting := true
 	greeting := "Здравствуйте"
-	return mockActiveModelProvider{model: &commdom.UniversalModelData{
+	return mockActiveModelProvider{model: &comdom.UniversalModelData{
 		Realtime: true,
-		RealtimeVAD: &commdom.RealtimeVAD{
+		RealtimeVAD: &comdom.RealtimeVAD{
 			InitialGreeting: &initialGreeting,
 			Greeting:        &greeting,
 		},
@@ -130,13 +130,13 @@ func TestValidateActiveCallModelRequiresRealtimeGreeting(t *testing.T) {
 	greeting := "hello"
 	cases := []struct {
 		name  string
-		model *commdom.UniversalModelData
+		model *comdom.UniversalModelData
 	}{
 		{name: "missing model"},
-		{name: "realtime disabled", model: &commdom.UniversalModelData{}},
-		{name: "missing realtime config", model: &commdom.UniversalModelData{Realtime: true}},
-		{name: "greeting disabled", model: &commdom.UniversalModelData{Realtime: true, RealtimeVAD: &commdom.RealtimeVAD{InitialGreeting: new(bool), Greeting: &greeting}}},
-		{name: "missing greeting", model: &commdom.UniversalModelData{Realtime: true, RealtimeVAD: &commdom.RealtimeVAD{InitialGreeting: &initialGreeting}}},
+		{name: "realtime disabled", model: &comdom.UniversalModelData{}},
+		{name: "missing realtime config", model: &comdom.UniversalModelData{Realtime: true}},
+		{name: "greeting disabled", model: &comdom.UniversalModelData{Realtime: true, RealtimeVAD: &comdom.RealtimeVAD{InitialGreeting: new(bool), Greeting: &greeting}}},
+		{name: "missing greeting", model: &comdom.UniversalModelData{Realtime: true, RealtimeVAD: &comdom.RealtimeVAD{InitialGreeting: &initialGreeting}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // RunAppConfigRekey запускает one-shot перекодирование sensitive значений app_config

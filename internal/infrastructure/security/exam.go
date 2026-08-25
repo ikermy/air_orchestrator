@@ -24,13 +24,11 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
-
-const TOTPName = "MarusiaAI"
 
 type RegData struct {
 	created time.Time
@@ -612,7 +610,7 @@ func (e *Exam) ParseMailConfirmationToken(tokenString string) (uint32, string, e
 // accountName — обычно email пользователя.
 func (e *Exam) GenerateTOTPSecret(accountName string) (secret, uri string, err error) {
 	key, genErr := totp.Generate(totp.GenerateOpts{
-		Issuer:      TOTPName,
+		Issuer:      state.TOTPName,
 		AccountName: accountName,
 		Period:      30,
 		SecretSize:  20,

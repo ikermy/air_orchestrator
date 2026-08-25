@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 
 	"testing"
 )
@@ -148,7 +148,7 @@ func TestGetModelByProvider(t *testing.T) {
 
 	// Тестируем для провайдера OpenAI (1)
 	t.Run("OpenAI Provider", func(t *testing.T) {
-		provider := commdom.ProviderOpenAI
+		provider := comdom.ProviderOpenAI
 		model, err := db.GetModelByProvider(testUserId, provider)
 		if err != nil {
 			t.Fatalf("GetModelByProvider(OpenAI) failed: %v", err)
@@ -187,7 +187,7 @@ func TestGetModelByProvider(t *testing.T) {
 
 	// Тестируем для провайдера Mistral (2)
 	t.Run("Mistral Provider", func(t *testing.T) {
-		provider := commdom.ProviderMistral
+		provider := comdom.ProviderMistral
 		model, err := db.GetModelByProvider(testUserId, provider)
 		if err != nil {
 			t.Fatalf("GetModelByProvider(Mistral) failed: %v", err)
@@ -307,7 +307,7 @@ func TestGetActiveProvider(t *testing.T) {
 
 	// Дополнительная проверка — ожидаемые провайдеры
 	switch provider {
-	case commdom.ProviderOpenAI, commdom.ProviderMistral:
+	case comdom.ProviderOpenAI, comdom.ProviderMistral:
 		t.Logf("Active provider for user %d: %d", testUserId, provider)
 	default:
 		t.Fatalf("неизвестный провайдер: %d", provider)

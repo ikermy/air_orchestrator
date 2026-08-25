@@ -4,17 +4,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ikermy/air_common/pkg/model/create"
+	"github.com/ikermy/air-common/pkg/comdom"
 )
 
 // ---- minimal mocks ----
 
 type mockModelStore struct {
-	models []create.UniversalModelData
+	models []comdom.UniversalModelData
 	err    error
 }
 
-func (m *mockModelStore) GetUserModels(_ uint32) ([]create.UniversalModelData, error) {
+func (m *mockModelStore) GetUserModels(_ uint32) ([]comdom.UniversalModelData, error) {
 	return m.models, m.err
 }
 
@@ -28,16 +28,16 @@ func buildHandler(store *mockModelStore) *Handler {
 
 func TestMCP_ToolsList(t *testing.T) {
 	store := &mockModelStore{
-		models: []create.UniversalModelData{
+		models: []comdom.UniversalModelData{
 			{
-				Provider: create.ProviderType(1),
+				Provider: comdom.ProviderType(1),
 				S3:       true,
 			},
 		},
 	}
 	h := buildHandler(store)
 
-	tools, err := h.buildToolsList(42, create.ProviderType(1))
+	tools, err := h.buildToolsList(42, comdom.ProviderType(1))
 	if err != nil {
 		t.Fatalf("buildToolsList returned error: %v", err)
 	}
@@ -58,16 +58,16 @@ func TestMCP_ToolsList(t *testing.T) {
 
 func TestMCP_PromptsGet_System(t *testing.T) {
 	store := &mockModelStore{
-		models: []create.UniversalModelData{
+		models: []comdom.UniversalModelData{
 			{
-				Provider: create.ProviderType(1),
+				Provider: comdom.ProviderType(1),
 				S3:       true,
 			},
 		},
 	}
 	h := buildHandler(store)
 
-	hint := h.buildSystemPromptHint(42, create.ProviderType(1))
+	hint := h.buildSystemPromptHint(42, comdom.ProviderType(1))
 
 	for _, substr := range []string{"get_s3_files", "create_file"} {
 		if !strings.Contains(hint, substr) {

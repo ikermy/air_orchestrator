@@ -5,17 +5,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // UploadEmbeddingRequest представляет запрос на загрузку документа с эмбеддингом.
 type UploadEmbeddingRequest struct {
-	Token    string                    `json:"token"`
-	Provider string                    `json:"provider"` // "google" или "openai"
-	DocName  string                    `json:"doc_name" binding:"required"`
-	Content  string                    `json:"content" binding:"required"`
-	Metadata *commdom.DocumentMetadata `json:"metadata,omitempty"`
+	Token    string                   `json:"token"`
+	Provider string                   `json:"provider"` // "google" или "openai"
+	DocName  string                   `json:"doc_name" binding:"required"`
+	Content  string                   `json:"content" binding:"required"`
+	Metadata *comdom.DocumentMetadata `json:"metadata,omitempty"`
 }
 
 // UploadEmbedding godoc
@@ -43,7 +43,7 @@ func (w *Web) UploadEmbedding(c *gin.Context) {
 	}
 
 	// Если метаданные не переданы — создаём базовые
-	metadata := commdom.DocumentMetadata{
+	metadata := comdom.DocumentMetadata{
 		Source:    "api_upload",
 		CreatedAt: time.Now().Format(time.RFC3339),
 	}
@@ -96,7 +96,7 @@ func (w *Web) ListUserDocuments(c *gin.Context) {
 		logger.Warn("ListUserDocuments: не удалось получить список документов (provider=%s): %v", provider, err, userId)
 		c.JSON(http.StatusOK, gin.H{
 			"success":   true,
-			"documents": []commdom.VectorDocument{},
+			"documents": []comdom.VectorDocument{},
 			"count":     0,
 			"provider":  provider,
 		})
@@ -104,7 +104,7 @@ func (w *Web) ListUserDocuments(c *gin.Context) {
 	}
 
 	if documents == nil {
-		documents = []commdom.VectorDocument{}
+		documents = []comdom.VectorDocument{}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

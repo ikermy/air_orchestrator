@@ -25,9 +25,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air_common/pkg/model"
-	"github.com/ikermy/air_common/pkg/model/commdom"
-	"github.com/ikermy/air_logger/v2/pkg/logger"
+	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/pkg/model"
+	"github.com/ikermy/air-logger/v2/pkg/logger"
 	"golang.org/x/time/rate"
 )
 
@@ -81,8 +81,8 @@ type AuthUC interface {
 
 // ProviderUC — интерфейс use case управления провайдерами и API-ключами.
 type ProviderUC interface {
-	RevokeUserAPIKey(userID uint32, provider commdom.ProviderType) (needRestart bool, err error)
-	SetUserAPIKey(userID uint32, provider commdom.ProviderType, apiKey string) (needRestart bool, err error)
+	RevokeUserAPIKey(userID uint32, provider comdom.ProviderType) (needRestart bool, err error)
+	SetUserAPIKey(userID uint32, provider comdom.ProviderType, apiKey string) (needRestart bool, err error)
 }
 
 // ─── Интерфейс use case TestAPI ──────────────────────────────────────────────
@@ -90,7 +90,7 @@ type ProviderUC interface {
 // TestAPI — интерфейс use case тестовых AI-сессий.
 // Delivery зависит от этого интерфейса, а не от конкретного *session.TestAPI.
 type TestAPI interface {
-	StartSession(ctx context.Context, userId uint32, respId uint64, provider commdom.ProviderType) (*session.TestSession, *commdom.UniversalModelData, error)
+	StartSession(ctx context.Context, userId uint32, respId uint64, provider comdom.ProviderType) (*session.TestSession, *comdom.UniversalModelData, error)
 	SendMessage(userId uint32, respId uint64, msg model.Message) error
 	GetChannel(userId uint32, respId uint64) (*model.Ch, error)
 	GetAnswer(ctx context.Context, userId uint32, respId uint64, timeout time.Duration) (*session.AnswerResponse, error)
