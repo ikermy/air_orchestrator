@@ -52,7 +52,7 @@ func (d *DB) CreateUser(name, pass, encEmail, emailHMAC, lang string, demo bool)
 	// Проверяю что lang валидный
 	ok := state.ValidateLanguage(lang)
 	if !ok {
-		lang = "ru"
+		lang = "en"
 	}
 
 	// Если пользователь выбрал демо доступ

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/ikermy/air-common/pkg/model"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -193,80 +194,47 @@ func (w *Web) testRealtimeHandler(c *gin.Context) {
 					firstDeltaSent = false
 				}
 
-				var data []byte
-				if ev.Data != nil {
-					// Data уже содержит готовый JSON (token_usage и др.)
-					data = ev.Data
-
-					// Обработка token_usage аналогично testWebSocketHandler
-					if ev.Type == "token_usage" {
-						var tu map[string]any
-						if err := json.Unmarshal(ev.Data, &tu); err == nil {
-							if usage, ok := tu["usage"].(map[string]any); ok {
-								inputTokens, _ := usage["input_tokens"].(float64)
-								outputTokens, _ := usage["output_tokens"].(float64)
-								totalTokens, _ := usage["total_tokens"].(float64)
-								cachedTokens := 0.0
-								if details, ok := usage["input_tokens_details"].(map[string]any); ok {
-									cachedTokens, _ = details["cached_tokens"].(float64)
-								}
-								audioIn, audioOut := 0.0, 0.0
-								if details, ok := usage["input_tokens_details"].(map[string]any); ok {
-									audioIn, _ = details["audio_tokens"].(float64)
-								}
-								if details, ok := usage["output_tokens_details"].(map[string]any); ok {
-									audioOut, _ = details["audio_tokens"].(float64)
-								}
-								if cachedTokens > 0 {
-									logger.Info("и [Realtime TOKEN USAGE] Input: %d (audio:%d, cached:%d °) | Output: %d (audio:%d) | Total: %d respId=%d",
-										int(inputTokens), int(audioIn), int(cachedTokens),
-										int(outputTokens), int(audioOut),
-										int(totalTokens), respId, userId)
-								} else {
-									logger.Info("и [Realtime TOKEN USAGE] Input: %d (audio:%d) | Output: %d (audio:%d) | Total: %d respId=%d",
-										int(inputTokens), int(audioIn),
-										int(outputTokens), int(audioOut),
-										int(totalTokens), respId, userId)
-								}
+				// Обработка token_usage аналогично testWebSocketHandler.
+				// Сериализация ниже всегда выполняется через boundary-helper:
+				// event.Data нельзя отправлять напрямую, поскольку он может
+				// содержать provider-specific JSON.
+				if ev.Type == "token_usage" && ev.Data != nil {
+					var tu map[string]any
+					if err := json.Unmarshal(ev.Data, &tu); err == nil {
+						if usage, ok := tu["usage"].(map[string]any); ok {
+							inputTokens, _ := usage["input_tokens"].(float64)
+							outputTokens, _ := usage["output_tokens"].(float64)
+							totalTokens, _ := usage["total_tokens"].(float64)
+							cachedTokens := 0.0
+							if details, ok := usage["input_tokens_details"].(map[string]any); ok {
+								cachedTokens, _ = details["cached_tokens"].(float64)
+							}
+							audioIn, audioOut := 0.0, 0.0
+							if details, ok := usage["input_tokens_details"].(map[string]any); ok {
+								audioIn, _ = details["audio_tokens"].(float64)
+							}
+							if details, ok := usage["output_tokens_details"].(map[string]any); ok {
+								audioOut, _ = details["audio_tokens"].(float64)
+							}
+							if cachedTokens > 0 {
+								logger.Info("и [Realtime TOKEN USAGE] Input: %d (audio:%d, cached:%d °) | Output: %d (audio:%d) | Total: %d respId=%d",
+									int(inputTokens), int(audioIn), int(cachedTokens),
+									int(outputTokens), int(audioOut),
+									int(totalTokens), respId, userId)
+							} else {
+								logger.Info("и [Realtime TOKEN USAGE] Input: %d (audio:%d) | Output: %d (audio:%d) | Total: %d respId=%d",
+									int(inputTokens), int(audioIn),
+									int(outputTokens), int(audioOut),
+									int(totalTokens), respId, userId)
 							}
 						}
 					}
-				} else {
-					payload := map[string]any{
-						"type": ev.Type,
-						"text": ev.Text,
-					}
-					if ev.Type == "response_done" && len(ev.Files) > 0 {
-						// Преобразуем []model.File в формат, подходящий для отправки клиенту
-						files := make([]map[string]any, 0, len(ev.Files))
-						for _, f := range ev.Files {
-							files = append(files, map[string]any{
-								"type":      string(f.Type),
-								"url":       f.URL,
-								"file_name": f.FileName,
-								"caption":   f.Caption,
-							})
-						}
-						payload["type"] = "assist"
-						// Непустой message — иначе клиент может проигнорировать сообщение
-						payload["message"] = ev.Files[0].FileName
-						payload["files"] = files
-						first := ev.Files[0]
-						if first.Type == "photo" {
-							payload["image_url"] = first.URL
-							payload["file_type"] = "image"
-						} else {
-							payload["file_url"] = first.URL
-							payload["file_type"] = "file"
-						}
-						payload["file_name"] = first.FileName
-						logger.Info("[Realtime] response_done → assist: count=%d file=%s respId=%d",
-							len(ev.Files), ev.Files[0].FileName, respId, userId)
-					}
-					if ev.Err != nil {
-						payload["error"] = ev.Err.Error()
-					}
-					data, _ = json.Marshal(payload)
+				}
+
+				data, err := model.MarshalRealtimeEvent(ev)
+				if err != nil {
+					logger.Warn("testRealtimeHandler: ошибка сериализации realtime-события: %v", err, userId)
+					continue
 				}
 
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {

@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	"air_orchestrator/internal/delivery/grpc/v1"
+	v1 "air_orchestrator/internal/delivery/grpc/v1"
 	"context"
 	"errors"
 	"fmt"
@@ -148,6 +148,13 @@ func (p *CallsProxy) SubscribeCallEvents(req *v1.SubscribeCallEventsRequest, str
 	}
 	backendStream, err := backend.SubscribeCallEvents(stream.Context(), &v1.SubscribeCallEventsRequest{UserId: userID, CallId: req.GetCallId(), AfterSequence: req.GetAfterSequence()})
 	if err != nil {
+		// The call may have ended before a reconnect/resubscription reached
+		// the backend. Treat a stale call id as a normal terminal condition so
+		// callers do not retry the same subscription forever.
+		if status.Code(err) == codes.NotFound || strings.Contains(err.Error(), "call not found") {
+			p.calls.Delete(req.GetCallId())
+			return nil
+		}
 		return err
 	}
 	for {
@@ -158,7 +165,7 @@ func (p *CallsProxy) SubscribeCallEvents(req *v1.SubscribeCallEventsRequest, str
 		if err := stream.Send(event); err != nil {
 			return err
 		}
-		if event.GetType() == v1.CallEventType_CALL_ENDED {
+		if event.GetType() == "call" && event.GetPhase() == "ended" {
 			p.calls.Delete(req.GetCallId())
 			return nil
 		}

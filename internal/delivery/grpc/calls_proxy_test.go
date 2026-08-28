@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	"air_orchestrator/internal/delivery/grpc/v1"
+	v1 "air_orchestrator/internal/delivery/grpc/v1"
 	"context"
 	"net"
 	"testing"
@@ -106,9 +106,9 @@ func TestCallsProxyForwardsProviderAndUser(t *testing.T) {
 
 func TestCallsProxyReconnectsWithAfterSequence(t *testing.T) {
 	backend := &mockCallsBackend{events: []*v1.CallEvent{
-		{CallId: "call-1", Sequence: 1, Type: v1.CallEventType_CALL_STARTED},
-		{CallId: "call-1", Sequence: 2, Type: v1.CallEventType_RESPONSE_TEXT_DELTA, Delta: "hello"},
-		{CallId: "call-1", Sequence: 3, Type: v1.CallEventType_CALL_ENDED},
+		{CallId: "call-1", Sequence: 1, Type: "call_started"},
+		{CallId: "call-1", Sequence: 2, Type: "transcript", Role: "assistant", Phase: "delta", Delta: "hello"},
+		{CallId: "call-1", Sequence: 3, Type: "call", Phase: "ended"},
 	}}
 	proxy := NewCallsProxy(newMockClient(t, backend), nil, mockDemoChecker{})
 	proxy.SetModelProvider(validCallModel())

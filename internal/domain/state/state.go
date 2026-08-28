@@ -6,8 +6,8 @@ import (
 
 const (
 	GrpcKeyMeta         = "x-service-key"
-	NewUserStorageLimit = 524288000
-	DefaultCurrency     = 0 // по умолчанию USDT
+	NewUserStorageLimit = 104857600 // 100 Mb
+	DefaultCurrency     = 0         // по умолчанию USDT
 	TOTPName            = "MarusiaAI"
 )
 
