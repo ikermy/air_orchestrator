@@ -98,8 +98,7 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
-	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
-	// s.mail — адрес алиаса, который видит пользователь в From
+	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", state.MailSenderAlias)
 	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
@@ -175,7 +174,7 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 		return fmt.Errorf("ошибка аутентификации: %w", err)
 	}
 
-	if err := client.Mail(s.mail); err != nil {
+	if err := client.Mail(state.MailSenderAlias); err != nil {
 		return fmt.Errorf("ошибка указания отправителя: %w", err)
 	}
 
@@ -213,8 +212,7 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
-	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
-	// s.mail — адрес алиаса, который видит пользователь в From
+	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", state.MailSenderAlias)
 	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
@@ -292,7 +290,7 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 	}
 
 	// Установка отправителя и получателя
-	if err := client.Mail(s.mail); err != nil {
+	if err := client.Mail(state.MailSenderAlias); err != nil {
 		return fmt.Errorf("ошибка указания отправителя: %w", err)
 	}
 
@@ -385,8 +383,7 @@ func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error 
 
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
-	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
-	// s.mail — адрес алиаса, который видит пользователь в From
+	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", state.MailSenderAlias)
 	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
@@ -455,7 +452,7 @@ func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error 
 	}
 
 	// Установка отправителя и получателя
-	if err := client.Mail(s.mail); err != nil {
+	if err := client.Mail(state.MailSenderAlias); err != nil {
 		return fmt.Errorf("ошибка указания отправителя: %w", err)
 	}
 
