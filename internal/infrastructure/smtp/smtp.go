@@ -100,7 +100,7 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
 	// s.mail — адрес алиаса, который видит пользователь в From
-	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
+	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
@@ -215,7 +215,7 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
 	// s.mail — адрес алиаса, который видит пользователь в From
-	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
+	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
@@ -387,7 +387,7 @@ func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error 
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
 	// s.mail — адрес алиаса, который видит пользователь в From
-	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
+	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
