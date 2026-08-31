@@ -9,6 +9,7 @@ const (
 	NewUserStorageLimit = 104857600 // 100 Mb
 	DefaultCurrency     = 0         // по умолчанию USDT
 	TOTPName            = "MarusiaAI"
+	MailSenderName
 )
 
 // ─── Runtime-переменные приложения ────────────────────────────────────────────

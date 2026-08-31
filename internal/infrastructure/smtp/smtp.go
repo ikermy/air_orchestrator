@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"air_orchestrator/internal/config"
+	"air_orchestrator/internal/domain/state"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -197,6 +198,8 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
+	// s.mail — адрес алиаса, который видит пользователь в From
+	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	replyTo := fmt.Sprintf("Reply-To: %s\r\n", s.mail)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
@@ -243,7 +246,7 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 </html>`, confirmReg, welcome, forConfirmReg, confirmLink, ifYouHaventReq, sincerely)
 
 	// Правильный порядок заголовков
-	message := []byte(from + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + sender + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Остальной код остается без изменений...
 	tlsConfig := &tls.Config{
@@ -311,6 +314,8 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
+	// s.mail — адрес алиаса, который видит пользователь в From
+	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	replyTo := fmt.Sprintf("Reply-To: %s\r\n", s.mail)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
@@ -355,7 +360,7 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 </body>
 </html>`, passRecovery, passRecovery, forResetPass, resetLink, resetPass, ifYouHavent, sincerely)
 
-	message := []byte(from + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + sender + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Настройка TLS конфигурации
 	tlsConfig := &tls.Config{
@@ -482,6 +487,8 @@ func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error 
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
+	// s.mail — адрес алиаса, который видит пользователь в From
+	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	replyTo := fmt.Sprintf("Reply-To: %s\r\n", s.mail)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
@@ -517,7 +524,7 @@ func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error 
 </body>
 </html>`, notification, notificationFromMarusia, msg, sincerelyMarusiaTeam)
 
-	message := []byte(from + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + sender + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Настройка TLS конфигурации
 	tlsConfig := &tls.Config{
