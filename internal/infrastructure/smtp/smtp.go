@@ -86,105 +86,6 @@ func extractDomain(email string) string {
 	return "localhost"
 }
 
-//func (s *SMTP) TLSSendConfirmMail(recepient, link string) error {
-//	// Получатель и текст письма
-//	to := []string{recepient}
-//
-//	// Формирование HTML-письма с ссылкой для подтверждения
-//	confirmLink := fmt.Sprintf("%s/confirm?key=%s", mode.RealHost, link)
-//
-//	// Обязательные заголовки для предотвращения попадания в спам
-//	domain := extractDomain(s.mail)
-//	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", s.mail)
-//	toHeader := fmt.Sprintf("To: %s\r\n", recepient)
-//	replyTo := fmt.Sprintf("Reply-To: %s\r\n", s.mail)
-//	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
-//	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
-//	subject := "Subject: =?UTF-8?B?TWFydXNpYUFJIC0g0L/QvtC00YLQstC10YDQttC00LXQvdC40LUg0LDQtNGA0LXRgdCwINC/0L7Rh9GC0Ys=?=\r\n"
-//	xMailer := "X-Mailer: MarusiaAI Mailer v1.0\r\n"
-//	mime := "MIME-Version: 1.0\r\n"
-//	contentType := "Content-Type: text/html; charset=utf-8\r\n"
-//
-//	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
-//<html lang="ru">
-//<head><meta charset="UTF-8"><title>Подтверждение регистрации</title></head>
-//<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-//    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-//        <h2 style="color: #4a90e2;">Добро пожаловать в MarusiaAI!</h2>
-//        <p>Вы успешно зарегистрировались на сайте MarusiaAI.</p>
-//        <p>Для подтверждения вашего адреса электронной почты, пожалуйста, перейдите по следующей ссылке:</p>
-//        <p style="text-align: center; margin: 30px 0;">
-//            <a href="%s" style="display: inline-block; padding: 12px 24px; background-color: #4a90e2; color: #ffffff; text-decoration: none; border-radius: 4px;">Подтвердить адрес электронной почты</a>
-//        </p>
-//        <p style="color: #666; font-size: 14px;">Если вы не запрашивали подтверждение, просто проигнорируйте это письмо.</p>
-//        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-//        <p style="color: #999; font-size: 12px;">С уважением,<br>Команда MarusiaAI</p>
-//    </div>
-//</body>
-//</html>`, confirmLink)
-//
-//	message := []byte(from + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
-//
-//	// Настройка TLS конфигурации
-//	tlsConfig := &tls.Config{
-//		ServerName:         s.host,
-//		InsecureSkipVerify: false,
-//	}
-//
-//	// Создание защищенного соединения
-//	conn, err := tls.Dial("tcp", s.host+":"+s.port, tlsConfig)
-//	if err != nil {
-//		return fmt.Errorf("ошибка подключения к серверу: %w", err)
-//	}
-//
-//	// Создание клиента SMTP поверх TLS соединения
-//	client, err := smtp.NewClient(conn, s.host)
-//	if err != nil {
-//		return fmt.Errorf("ошибка создания SMTP клиента: %w", err)
-//	}
-//	defer func(client *smtp.Client) {
-//		err := client.Close()
-//		if err != nil {
-//			logger.Error("ошибка закрытия SMTP клиента: %v\n", err)
-//		}
-//	}(client)
-//
-//	// Аутентификация
-//	auth := smtp.PlainAuth("", s.mail, s.pass, s.host)
-//	if err := client.Auth(auth); err != nil {
-//		return fmt.Errorf("ошибка аутентификации: %w", err)
-//	}
-//
-//	// Установка отправителя и получателя
-//	if err := client.Mail(s.mail); err != nil {
-//		return fmt.Errorf("ошибка указания отправителя: %w", err)
-//	}
-//
-//	for _, recipient := range to {
-//		if err := client.Rcpt(recipient); err != nil {
-//			return fmt.Errorf("ошибка указания получателя: %w", err)
-//		}
-//	}
-//
-//	// Отправка сообщения
-//	w, err := client.Data()
-//	if err != nil {
-//		return fmt.Errorf("ошибка подготовки данных: %w", err)
-//	}
-//
-//	_, err = w.Write(message)
-//	if err != nil {
-//		return fmt.Errorf("ошибка записи сообщения: %w", err)
-//	}
-//
-//	err = w.Close()
-//	if err != nil {
-//		return fmt.Errorf("ошибка завершения отправки: %w", err)
-//	}
-//
-//	return nil
-//}
-
 func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 	confirmReg := s.end.TranslateMessageWithLang(lang, "confirm.registration")
 	welcome := s.end.TranslateMessageWithLang(lang, "welcome")
@@ -201,7 +102,6 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 	// s.mail — адрес алиаса, который видит пользователь в From
 	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
-	replyTo := fmt.Sprintf("Reply-To: %s\r\n", s.mail)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
 	subject := fmt.Sprintf("Subject: %s\r\n", encodeSubject(confirmReg))
@@ -246,7 +146,7 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 </html>`, confirmReg, welcome, forConfirmReg, confirmLink, ifYouHaventReq, sincerely)
 
 	// Правильный порядок заголовков
-	message := []byte(from + sender + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + sender + toHeader + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Остальной код остается без изменений...
 	tlsConfig := &tls.Config{
@@ -317,7 +217,6 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 	// s.mail — адрес алиаса, который видит пользователь в From
 	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
-	replyTo := fmt.Sprintf("Reply-To: %s\r\n", s.mail)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
 	subject := fmt.Sprintf("Subject: %s\r\n", encodeSubject(passRecovery))
@@ -360,7 +259,7 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 </body>
 </html>`, passRecovery, passRecovery, forResetPass, resetLink, resetPass, ifYouHavent, sincerely)
 
-	message := []byte(from + sender + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + sender + toHeader + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Настройка TLS конфигурации
 	tlsConfig := &tls.Config{
@@ -490,7 +389,6 @@ func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error 
 	// s.mail — адрес алиаса, который видит пользователь в From
 	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderName)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
-	replyTo := fmt.Sprintf("Reply-To: %s\r\n", s.mail)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
 	subject := fmt.Sprintf("Subject: %s\r\n", encodeSubject(notification))
@@ -524,7 +422,7 @@ func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error 
 </body>
 </html>`, notification, notificationFromMarusia, msg, sincerelyMarusiaTeam)
 
-	message := []byte(from + sender + toHeader + replyTo + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + sender + toHeader + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Настройка TLS конфигурации
 	tlsConfig := &tls.Config{
