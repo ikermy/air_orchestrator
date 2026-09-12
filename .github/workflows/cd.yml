@@ -111,8 +111,11 @@ jobs:
           HOST: ${{ secrets.HOST }}
         run: |
           set -euo pipefail
+          # HOST/KEY могут прийти с CRLF из секрета — срезаем \r, иначе ssh/scp
+          # ругается «hostname contains invalid characters».
+          HOST="$(printf '%s' "$HOST" | tr -d '\r\n')"
           mkdir -p ~/.ssh
-          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          printf '%s' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_deploy
           printf '\n' >> ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
@@ -123,6 +126,8 @@ jobs:
           HOST: ${{ secrets.HOST }}
           USERNAME: ${{ secrets.USERNAME }}
         run: |
+          HOST="$(printf '%s' "$HOST" | tr -d '\r\n')"
+          USERNAME="$(printf '%s' "$USERNAME" | tr -d '\r\n')"
           for i in $(seq 1 5); do
             if scp -r -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i ~/.ssh/id_deploy \
                 prod.yml air-db.yml air-loki.yml air-mon.yml air-promtail.yml air-redis.yml air-s3.yml minio-cors.json envoy monitoring \
@@ -154,6 +159,8 @@ jobs:
           MYSQL_ROOT_PASSWORD_B64: ${{ steps.prepare.outputs.mysql_root_password_b64 }}
           APP_MASTER_KEY_B64: ${{ steps.prepare.outputs.app_master_key_b64 }}
         run: |
+          HOST="$(printf '%s' "$HOST" | tr -d '\r\n')"
+          USERNAME="$(printf '%s' "$USERNAME" | tr -d '\r\n')"
           cat > /tmp/remote-deploy.sh <<'REMOTE'
           set -u
           cd /bot/marusia/air_orc
