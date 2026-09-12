@@ -128,10 +128,21 @@ jobs:
         run: |
           HOST="$(printf '%s' "$HOST" | tr -d '\r\n')"
           USERNAME="$(printf '%s' "$USERNAME" | tr -d '\r\n')"
+
+          # minio-cors.json не хранится в репозитории (лежит на сервере), поэтому
+          # копируем только реально существующие пути — иначе scp падает на stat.
+          files=""
+          for f in prod.yml air-db.yml air-loki.yml air-mon.yml air-promtail.yml air-redis.yml air-s3.yml minio-cors.json envoy monitoring; do
+            if [ -e "$f" ]; then
+              files="$files $f"
+            else
+              echo "skip missing: $f"
+            fi
+          done
+
           for i in $(seq 1 5); do
             if scp -r -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i ~/.ssh/id_deploy \
-                prod.yml air-db.yml air-loki.yml air-mon.yml air-promtail.yml air-redis.yml air-s3.yml minio-cors.json envoy monitoring \
-                "$USERNAME@$HOST:/bot/marusia/air_orc/"; then
+                $files "$USERNAME@$HOST:/bot/marusia/air_orc/"; then
               echo "scp OK (attempt $i)"
               exit 0
             fi
@@ -177,10 +188,11 @@ jobs:
           [ -n "$MYSQL_ROOT_PASSWORD_B64" ] && decode "$MYSQL_ROOT_PASSWORD_B64" > secrets/mysql_root_password.txt
           [ -n "$APP_MASTER_KEY_B64" ] && decode "$APP_MASTER_KEY_B64" > secrets/app_master_key.txt
 
-          # 2. CORS для MinIO
+          # 2. CORS для MinIO (файл может отсутствовать в чекауте — правим если есть)
           FRONTEND_ORIGIN="$(decode "$FRONTEND_ORIGIN_B64")"
-          test -n "$FRONTEND_ORIGIN"
-          sed -i "s|FRONTEND_ORIGIN_PLACEHOLDER|$FRONTEND_ORIGIN|g" minio-cors.json
+          if [ -f minio-cors.json ] && [ -n "$FRONTEND_ORIGIN" ]; then
+            sed -i "s|FRONTEND_ORIGIN_PLACEHOLDER|$FRONTEND_ORIGIN|g" minio-cors.json
+          fi
 
           # 3. Сети
           docker network inspect app_internal >/dev/null 2>&1 || docker network create app_internal
