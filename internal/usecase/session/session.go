@@ -22,7 +22,7 @@ import (
 // Store — минимальный интерфейс к БД для TestAPI.
 type Store interface {
 	CheckDemo(userId uint32) (bool, error)
-	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdom.ChatType) (uint64, error)
+	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdom.ChannelType) (uint64, error)
 	GetModelByProviderAnyStatus(userID uint32, provider comdom.ProviderType) (*comdom.UserModelRecord, error)
 }
 
@@ -388,35 +388,31 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 	ta.sessions.Store(key, session)
 	metrics.ActiveTestSessions.Inc()
 
-	// Создаем StartCh для запуска listener через startpoint
+	// Создаем StartCh для запуска listener через startpoint.
+	// ВАЖНО: указатель, StartSession может заполнить startData.Realtime.
 	startData := model.StartCh{
-		Model:   respModel,
-		Chanel:  testChannel,
-		RespId:  respId,
-		TreadId: treadId,
-		Ctx:     sessCtx, // Используем новый sessCtx
+		Model:    respModel,
+		ChName:   comdom.Web,
+		Channel:  testChannel,
+		RespId:   respId,
+		ThreadId: treadId,
+		Ctx:      sessCtx, // Используем новый sessCtx
 	}
 
-	logger.Debug("TestAPI: подготовка к запуску StarterListener respId=%d, TxCh=%p, RxCh=%p",
+	logger.Debug("TestAPI: подготовка к запуску StartSession respId=%d, TxCh=%p, RxCh=%p",
 		respId, testChannel.TxCh, testChannel.RxCh, userId)
 
-	// Запускаем startpoint.StarterListener
-	errCh := make(chan error, 1) // закроется в StarterListener
-
-	ta.starter.StarterListener(startData, errCh)
+	// Запускаем startpoint.StartSession. Канал ошибок принадлежит ядру —
+	// не закрываем его сами, только вычитываем.
+	errCh := ta.starter.StartSession(&startData)
 
 	// Мониторим ошибки в фоновом режиме
 	go func() {
-		for {
-			select {
-			case err := <-errCh:
-				if err != nil {
-					logger.Error("TestAPI: ошибка от StarterListener, respId=%d: %v", respId, err, userId)
-				} else {
-					logger.Debug("TestAPI: StarterListener завершил работу без ошибки, respId=%d", respId, userId)
-				}
-			case <-sessCtx.Done():
-				return
+		for err := range errCh {
+			if err != nil {
+				logger.Error("TestAPI: ошибка StartSession, respId=%d: %v", respId, err, userId)
+			} else {
+				logger.Debug("TestAPI: StartSession завершил работу без ошибки, respId=%d", respId, userId)
 			}
 		}
 	}()
@@ -581,7 +577,7 @@ func (ta *TestAPI) getRealtimeProvider(userId uint32, respId uint64) (model.Real
 
 	// 2. По наличию активной realtime-сессии у провайдера
 	// (для случая когда TestSession уже удалена CleanupWebSocketSession,
-	// но realtime-сессия ещё активна — вызовы GetRealtimeChannels, SendRealtimeAudio и т.д.)
+	// но realtime-сессия ещё активна — вызовы SendRealtimeAudio и т.д.)
 	for _, provType := range []comdom.ProviderType{comdom.ProviderOpenAI, comdom.ProviderGoogle, comdom.ProviderMistral} {
 		pmRaw := ta.mod.GetProviderModel(provType)
 		if pmRaw != nil {
@@ -598,55 +594,68 @@ func (ta *TestAPI) getRealtimeProvider(userId uint32, respId uint64) (model.Real
 }
 
 // StartRealtimeSession запускает голосовую сессию для активного respId.
+// Ядро startpoint.Start — единственный владелец lifecycle realtime-сессии:
+// оно само достаёт RealtimeProvider из Router, поднимает сессию и заполняет
+// startCh.Realtime каналами. Транспорт лишь получает эти каналы.
 // Вызывается из хендлера /ws/test-realtime после upgrade.
 // treadId передаётся явно из query-параметра — не зависит от наличия TestSession в sessions
 // (сессия могла быть удалена CleanupWebSocketSession после закрытия /ws/test-model).
 // Поддерживаются OpenAI Realtime API, Google Live API и Mistral realtime
 // cascade (Voxtral STT → Mistral LLM → Voxtral TTS).
-func (ta *TestAPI) StartRealtimeSession(userId uint32, respId uint64, treadId uint64) error {
-	rp, ok := ta.getRealtimeProvider(userId, respId)
-	if !ok {
-		return fmt.Errorf("StartRealtimeSession: RealtimeProvider недоступен (модель не поддерживает realtime; поддерживаются OpenAI, Google и Mistral)")
+func (ta *TestAPI) StartRealtimeSession(userId uint32, respId uint64, treadId uint64) (*model.RealtimeChannels, error) {
+	startCh := &model.StartCh{
+		Ctx:      ta.ctx,
+		ChName:   comdom.Web,
+		Model:    ta.realtimeRespModel(userId, respId),
+		RespId:   respId,
+		ThreadId: treadId,
+		// Realtime != nil — запрос realtime-режима. StartSession заполнит
+		// AudioTx/Drain/Events до возврата.
+		Realtime: &model.RealtimeChannels{},
 	}
 
-	return rp.StartRealtimeSession(userId, treadId, respId)
+	errCh := ta.starter.StartSession(startCh)
+	if startCh.Realtime == nil || startCh.Realtime.AudioTx == nil {
+		// Сессия не поднялась — причину смотрим в errCh.
+		select {
+		case e := <-errCh:
+			if e != nil {
+				return nil, fmt.Errorf("realtime-сессия не запущена: %w", e)
+			}
+		default:
+		}
+		return nil, fmt.Errorf("realtime-сессия не запущена для respId=%d", respId)
+	}
+
+	// errCh закрывает ядро; вычитываем, иначе писатель заблокируется и ошибки потеряются.
+	go func() {
+		for err := range errCh {
+			if err != nil {
+				logger.Warn("Realtime-сессия respId=%d: %v", respId, err, userId)
+			}
+		}
+	}()
+
+	return startCh.Realtime, nil
 }
 
-// StopRealtimeSession завершает голосовую сессию respId.
-// Использует DisconnectRealtimeSession который находит провайдер по respId,
-// а не по активной модели пользователя — корректно работает для OpenAI и Google.
+// realtimeRespModel возвращает *model.RespModel для StartCh.
+// Если TestSession жива — используется её RespModel. Иначе достаточно
+// минимальной модели с корректным UserID: ядро выберет провайдера по
+// активной модели пользователя, а провайдер восстановит респондента из БД.
+func (ta *TestAPI) realtimeRespModel(userId uint32, respId uint64) *model.RespModel {
+	if v, ok := ta.sessions.Load(ta.sessionKey(userId, respId)); ok {
+		if s := v.(*TestSession); s.RespModel != nil {
+			return s.RespModel
+		}
+	}
+	return &model.RespModel{Assist: model.Assistant{UserID: userId}}
+}
+
+// StopRealtimeSession завершает голосовую сессию respId через ядро CloseSession:
+// отписка событий, остановка провайдера и очистка реестра сессий.
 func (ta *TestAPI) StopRealtimeSession(_ uint32, respId uint64) {
-	ta.mod.DisconnectRealtimeSession(respId)
-}
-
-// GetRealtimeChannels возвращает каналы аудио и событий для respId.
-// Вызывается из хендлера /ws/test-realtime для чтения данных.
-// Поддерживаются OpenAI Realtime API, Google Live API и Mistral realtime.
-func (ta *TestAPI) GetRealtimeChannels(userId uint32, respId uint64) (<-chan []byte, <-chan model.RealtimeEvent, error) {
-	rp, ok := ta.getRealtimeProvider(userId, respId)
-	if !ok {
-		return nil, nil, fmt.Errorf("GetRealtimeChannels: RealtimeProvider недоступен (поддерживаются OpenAI, Google и Mistral)")
-	}
-
-	audioCh, err := rp.GetRealtimeAudio(respId)
-	if err != nil {
-		return nil, nil, err
-	}
-	eventCh, err := rp.SubscribeEvents(respId)
-	if err != nil {
-		return nil, nil, err
-	}
-	return audioCh, eventCh, nil
-}
-
-// UnsubscribeRealtimeEvents отписывает WebSocket-клиента от канала событий сессии.
-// Вызывается при закрытии соединения.
-func (ta *TestAPI) UnsubscribeRealtimeEvents(userId uint32, respId uint64, sub <-chan model.RealtimeEvent) {
-	rp, ok := ta.getRealtimeProvider(userId, respId)
-	if !ok {
-		return
-	}
-	rp.UnsubscribeEvents(respId, sub)
+	ta.starter.CloseSession(respId)
 }
 
 // SendRealtimeAudio передаёт PCM16-чанк от клиента в голосовую сессию.

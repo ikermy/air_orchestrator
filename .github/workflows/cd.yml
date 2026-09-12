@@ -1,0 +1,152 @@
+name: CD AirOrchestrator Production
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Setup, test, and build project
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build application
+        # prod-тег отключает swagger (см. internal/delivery/http/swagger_disabled.go)
+        run: go build -trimpath -tags prod -ldflags="-s -w" ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./...
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    name: Build and push image
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/airorc:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/airorc:prod
+          build-args: |
+            GO_BUILD_TAGS=prod
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    name: Deploy to production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Copy configs to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "prod.yml,air-db.yml,air-loki.yml,air-mon.yml,air-promtail.yml,air-redis.yml,air-s3.yml,minio-cors.json,envoy/envoy.prod.yaml,monitoring/"
+          target: "/bot/marusia/air_orc"
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          REGISTRY: ${{ env.REGISTRY }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          GIT_SHA: ${{ github.sha }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          FRONTEND_ORIGIN: ${{ secrets.FRONTEND_ORIGIN }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          APP_MASTER_KEY: ${{ secrets.APP_MASTER_KEY }}
+          NOTIF_TG_IDS: ${{ vars.TG_IDS }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GH_TOKEN,ACTOR,REGISTRY,REPO_OWNER,GIT_SHA,MINIO_ROOT_PASSWORD,FRONTEND_ORIGIN,DOMAIN,DB_USER,DB_PASSWORD,MYSQL_ROOT_PASSWORD,APP_MASTER_KEY,NOTIF_TG_IDS
+          script: |
+            cd /bot/marusia/air_orc
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+            mkdir -p secrets envoy monitoring
+            [ -f "envoy.prod.yaml" ] && mv envoy.prod.yaml envoy/envoy.prod.yaml
+            # Секреты пишем через printf '%s' (БЕЗ \n): иначе перевод строки
+            # попадает в значение и файл/конфиг перестаёт работать.
+            printf '%s' "$(printf '%s' "$MINIO_ROOT_PASSWORD" | tr -d '\r\n')" > secrets/minio_root_password.txt
+            test -s secrets/minio_root_password.txt
+            test -n "$FRONTEND_ORIGIN"
+            sed -i "s|FRONTEND_ORIGIN_PLACEHOLDER|$FRONTEND_ORIGIN|g" minio-cors.json
+            docker network inspect app_internal >/dev/null 2>&1 || docker network create app_internal
+            docker network inspect air_shared >/dev/null 2>&1 || docker network create air_shared
+            docker network inspect monitoring_shared >/dev/null 2>&1 || docker network create monitoring_shared
+            # 1. .env для Docker Compose
+            printf 'DOCKER_IMAGE=%s\n' "$REGISTRY/$REPO_OWNER/airorc:$GIT_SHA" > .env
+            printf 'DOCKER_IMAGE_ALIAS=%s\n' "$REGISTRY/$REPO_OWNER/airorc:prod" >> .env
+            printf 'DOMAIN=%s\n' "$(printf '%s' "$DOMAIN" | tr -d '\r\n')" >> .env
+            printf 'DB_USER=%s\n' "$(printf '%s' "$DB_USER" | tr -d '\r\n')" >> .env
+            printf 'DB_PASSWORD=%s\n' "$(printf '%s' "$DB_PASSWORD" | tr -d '\r\n')" >> .env
+            printf 'NOTIF_TG_IDS=%s\n' "$(printf '%s' "$NOTIF_TG_IDS" | tr -d '\r\n')" >> .env
+            chmod 600 .env
+            # 2. Постоянные secret-файлы (printf '%s' — без \n)
+            if [ -n "$MYSQL_ROOT_PASSWORD" ]; then printf '%s' "$(printf '%s' "$MYSQL_ROOT_PASSWORD" | tr -d '\r\n')" > secrets/mysql_root_password.txt; fi
+            if [ -n "$APP_MASTER_KEY" ]; then printf '%s' "$(printf '%s' "$APP_MASTER_KEY" | tr -d '\r\n')" > secrets/app_master_key.txt; fi
+            # 3. Инфраструктура
+            docker compose -f air-db.yml up -d
+            docker compose -f air-redis.yml up -d
+            docker compose -f air-loki.yml up -d
+            docker compose -f air-mon.yml up -d
+            docker compose -f air-promtail.yml up -d
+            docker compose -f air-s3.yml up -d
+            docker compose -f air-s3.yml run --rm minio-init
+            # 4. Приложение
+            docker compose -f prod.yml pull
+            docker compose -f prod.yml up -d --force-recreate
+            docker compose -f prod.yml ps
+            docker compose -f air-s3.yml ps
+            docker run --rm --network app_internal curlimages/curl:8.10.1 -fsS http://airorc:8080/v1/storage/health >/dev/null
+            docker image prune -f

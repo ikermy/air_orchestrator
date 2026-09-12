@@ -108,8 +108,8 @@ github.com/googleapis/gax-go/v2 v2.24.0 h1:myMaPYyF9MecEmvQqMqomIwn9t/4KCZN9qnws
 github.com/googleapis/gax-go/v2 v2.24.0/go.mod h1:IaTHBDd7NHxSCiu0vEs8pQZu4dGZrWwuSoxCnk16OFM=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/ikermy/air-common v1.50.98 h1:sksDl6QP8xNlIMIx+67y1V6lv5bR7+eehRsiv/vFFb8=
-github.com/ikermy/air-common v1.50.98/go.mod h1:tEdDbwc8Z9N0kCpKs5gskGR7+KocAqdOIFsVL4rOCEE=
+github.com/ikermy/air-common v1.51.0 h1:Zj+JQbRC3xq/XFQ14BnVZKLEf8XfnbWLEp5Jn76Ytn0=
+github.com/ikermy/air-common v1.51.0/go.mod h1:tEdDbwc8Z9N0kCpKs5gskGR7+KocAqdOIFsVL4rOCEE=
 github.com/ikermy/air-logger/v2 v2.1.4 h1:taxE4/8JjmFsP8HW73zHLEIy+JD9HadSelq89x0m0S4=
 github.com/ikermy/air-logger/v2 v2.1.4/go.mod h1:pdGKQevFnHCaNuzPl5K3IkNX7P6/s5YEjq56p+xOZ/Y=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=

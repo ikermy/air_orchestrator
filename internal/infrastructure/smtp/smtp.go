@@ -99,7 +99,6 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", state.MailSenderAlias)
-	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
@@ -145,7 +144,7 @@ func (s *SMTP) SendConfirmMail(lang, recipient, token string) error {
 </html>`, confirmReg, welcome, forConfirmReg, confirmLink, ifYouHaventReq, sincerely)
 
 	// Правильный порядок заголовков
-	message := []byte(from + sender + toHeader + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + toHeader + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Остальной код остается без изменений...
 	tlsConfig := &tls.Config{
@@ -213,7 +212,6 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 	// Обязательные заголовки для предотвращения попадания в спам
 	domain := extractDomain(s.mail)
 	from := fmt.Sprintf("From: MarusiaAI <%s>\r\n", state.MailSenderAlias)
-	sender := fmt.Sprintf("Sender: %s\r\n", state.MailSenderAlias)
 	toHeader := fmt.Sprintf("To: %s\r\n", recipient)
 	date := fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	messageID := fmt.Sprintf("Message-ID: <%s@%s>\r\n", uuid.New().String(), domain)
@@ -257,7 +255,7 @@ func (s *SMTP) SendResetPasswordMail(lang, recipient, resetToken string) error {
 </body>
 </html>`, passRecovery, passRecovery, forResetPass, resetLink, resetPass, ifYouHavent, sincerely)
 
-	message := []byte(from + sender + toHeader + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
+	message := []byte(from + toHeader + date + messageID + subject + xMailer + mime + contentType + "\r\n" + htmlBody)
 
 	// Настройка TLS конфигурации
 	tlsConfig := &tls.Config{

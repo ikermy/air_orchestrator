@@ -96,10 +96,8 @@ type TestAPI interface {
 	GetAnswer(ctx context.Context, userId uint32, respId uint64, timeout time.Duration) (*session.AnswerResponse, error)
 	StopSession(userId uint32, respId uint64) error
 	CleanupWebSocketSession(userId uint32, respId uint64) error
-	StartRealtimeSession(userId uint32, respId uint64, treadId uint64) error
+	StartRealtimeSession(userId uint32, respId uint64, treadId uint64) (*model.RealtimeChannels, error)
 	StopRealtimeSession(userId uint32, respId uint64)
-	GetRealtimeChannels(userId uint32, respId uint64) (<-chan []byte, <-chan model.RealtimeEvent, error)
-	UnsubscribeRealtimeEvents(userId uint32, respId uint64, sub <-chan model.RealtimeEvent)
 	SendRealtimeAudio(userId uint32, respId uint64, pcm16 []byte) error
 }
 

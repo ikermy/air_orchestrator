@@ -56,9 +56,11 @@ func (w *Web) testRealtimeHandler(c *gin.Context) {
 		logger.Debug("testRealtimeHandler: соединение закрыто respId=%d", respId, userId)
 	}()
 
-	// Запускаем сессию реального времени (поддержка Realtime API: OpenAI и Google).
-	// treadId используется для идентификации сессии в TestSession и sessions.
-	if err = w.api.StartRealtimeSession(userId, respId, treadId); err != nil {
+	// Запускаем сессию реального времени через ядро startpoint (единственный
+	// владелец lifecycle). Ядро само поднимает провайдера и заполняет каналы.
+	// treadId используется для идентификации сессии.
+	rt, err := w.api.StartRealtimeSession(userId, respId, treadId)
+	if err != nil {
 		errMsg, _ := json.Marshal(map[string]string{"type": "error", "text": err.Error()})
 		_ = conn.WriteMessage(websocket.TextMessage, errMsg)
 		logger.Error("testRealtimeHandler: Ошибка при StartRealtimeSession respId=%d treadId=%d: %v",
@@ -66,15 +68,10 @@ func (w *Web) testRealtimeHandler(c *gin.Context) {
 		return
 	}
 
-	// Получаем каналы аудио и событий
-	audioCh, eventCh, err := w.api.GetRealtimeChannels(userId, respId)
-	if err != nil {
-		errMsg, _ := json.Marshal(map[string]string{"type": "error", "text": err.Error()})
-		_ = conn.WriteMessage(websocket.TextMessage, errMsg)
-		logger.Error("testRealtimeHandler: Ошибка при GetRealtimeChannels respId=%d: %v", respId, err, userId)
-		return
-	}
-	defer w.api.UnsubscribeRealtimeEvents(userId, respId, eventCh)
+	// Каналы сессии: аудио ответа, сброс playback (drain) и события/ошибки.
+	audioCh := rt.AudioTx
+	drainCh := rt.Drain
+	eventCh := rt.Events
 
 	logger.Info("testRealtimeHandler: Получены каналы аудио и событий respId=%d treadId=%d", respId, treadId, userId)
 
@@ -114,6 +111,28 @@ func (w *Web) testRealtimeHandler(c *gin.Context) {
 		// Инициализация переменных для отслеживания времени первого дельта-сообщения
 		var firstDeltaTime time.Time
 		var firstDeltaSent bool
+
+		// flushPlayback сбрасывает накопленное аудио и уведомляет клиента о
+		// завершении текущего воспроизведения (barge-in / drain).
+		flushPlayback := func(cause string) bool {
+			drained := false
+			for !drained {
+				select {
+				case <-audioCh:
+				default:
+					drained = true
+				}
+			}
+			audioFramesSent = 0
+			audioBytesSent = 0
+			firstDeltaSent = false
+			stopMsg, _ := json.Marshal(map[string]string{"type": "audio_stop"})
+			if err := conn.WriteMessage(websocket.TextMessage, stopMsg); err != nil {
+				logger.Debug("testRealtimeHandler: ошибка отправки audio_stop (%s): %v", cause, err, userId)
+				return false
+			}
+			return true
+		}
 
 		for {
 			select {
@@ -156,23 +175,7 @@ func (w *Web) testRealtimeHandler(c *gin.Context) {
 
 				// barge-in: обработка прерывания текущей сессии
 				if ev.Type == "interrupted" {
-					// Сбрасываем аудио-каналы и очищаем очередь аудио
-					drained := false
-					for !drained {
-						select {
-						case <-audioCh:
-						default:
-							drained = true
-						}
-					}
-					// Сбрасываем счетчики аудио
-					audioFramesSent = 0
-					audioBytesSent = 0
-					firstDeltaSent = false
-					// Отправляем сообщение о завершении аудио
-					stopMsg, _ := json.Marshal(map[string]string{"type": "audio_stop"})
-					if err := conn.WriteMessage(websocket.TextMessage, stopMsg); err != nil {
-						logger.Debug("testRealtimeHandler: ошибка отправки audio_stop: %v", err, userId)
+					if !flushPlayback("interrupted") {
 						return
 					}
 					logger.Info("[Realtime] barge-in: audio_stop отправлено клиенту respId=%d", respId, userId)
@@ -250,6 +253,13 @@ func (w *Web) testRealtimeHandler(c *gin.Context) {
 					logger.Error("testRealtimeHandler: ошибка обработки сообщения respId=%d: %s", respId, errText, userId)
 					return
 				}
+
+			case <-drainCh:
+				// Провайдер просит сбросить playback (например, при barge-in).
+				if !flushPlayback("drain") {
+					return
+				}
+				logger.Info("[Realtime] drain: audio_stop отправлено клиенту respId=%d", respId, userId)
 
 			case <-ticker.C:
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
