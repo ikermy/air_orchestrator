@@ -80,8 +80,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      # Значения секретов переносим в base64: иначе appleboy `envs`/инлайн ломают
-      # их на кавычках, `$`, пробелах и CRLF, и в .env уезжает неверный DB_PASSWORD.
+      # Значения секретов переносим в base64: иначе кавычки, `$`, пробелы и CRLF
+      # искажают их, и в .env уезжает неверный DB_PASSWORD.
       - name: Prepare deploy secrets
         id: prepare
         shell: bash
@@ -105,80 +105,123 @@ jobs:
             echo "${name,,}_b64=$encoded" >> "$GITHUB_OUTPUT"
           done
 
+      - name: Set up SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          printf '\n' >> ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod 600 ~/.ssh/known_hosts
+
       - name: Copy configs to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "prod.yml,air-db.yml,air-loki.yml,air-mon.yml,air-promtail.yml,air-redis.yml,air-s3.yml,minio-cors.json,envoy/envoy.prod.yaml,monitoring/"
-          target: "/bot/marusia/air_orc"
+        env:
+          HOST: ${{ secrets.HOST }}
+          USERNAME: ${{ secrets.USERNAME }}
+        run: |
+          for i in $(seq 1 5); do
+            if scp -r -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i ~/.ssh/id_deploy \
+                prod.yml air-db.yml air-loki.yml air-mon.yml air-promtail.yml air-redis.yml air-s3.yml minio-cors.json envoy monitoring \
+                "$USERNAME@$HOST:/bot/marusia/air_orc/"; then
+              echo "scp OK (attempt $i)"
+              exit 0
+            fi
+            echo "scp attempt $i failed; retry in 15s"
+            sleep 15
+          done
+          echo "scp failed after 5 attempts"
+          exit 1
 
       - name: Deploy to server via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            set -u
-            cd /bot/marusia/air_orc
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            mkdir -p secrets envoy monitoring
-            [ -f "envoy.prod.yaml" ] && mv envoy.prod.yaml envoy/envoy.prod.yaml || true
+        env:
+          HOST: ${{ secrets.HOST }}
+          USERNAME: ${{ secrets.USERNAME }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          REGISTRY: ${{ env.REGISTRY }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          GIT_SHA: ${{ github.sha }}
+          DOMAIN_B64: ${{ steps.prepare.outputs.domain_b64 }}
+          DB_USER_B64: ${{ steps.prepare.outputs.db_user_b64 }}
+          DB_PASSWORD_B64: ${{ steps.prepare.outputs.db_password_b64 }}
+          NOTIF_TG_IDS_B64: ${{ steps.prepare.outputs.notif_tg_ids_b64 }}
+          FRONTEND_ORIGIN_B64: ${{ steps.prepare.outputs.frontend_origin_b64 }}
+          MINIO_ROOT_PASSWORD_B64: ${{ steps.prepare.outputs.minio_root_password_b64 }}
+          MYSQL_ROOT_PASSWORD_B64: ${{ steps.prepare.outputs.mysql_root_password_b64 }}
+          APP_MASTER_KEY_B64: ${{ steps.prepare.outputs.app_master_key_b64 }}
+        run: |
+          cat > /tmp/remote-deploy.sh <<'REMOTE'
+          set -u
+          cd /bot/marusia/air_orc
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          mkdir -p secrets envoy monitoring
+          [ -f "envoy.prod.yaml" ] && mv envoy.prod.yaml envoy/envoy.prod.yaml || true
 
-            # base64-декодер: значения секретов переносятся байт-в-байт.
-            decode() { printf '%s' "$1" | base64 -d; }
+          # base64-декодер: значения секретов переносятся байт-в-байт.
+          decode() { printf '%s' "$1" | base64 -d; }
 
-            # 1. Постоянные secret-файлы (printf '%s' — БЕЗ завершающего \n)
-            decode '${{ steps.prepare.outputs.minio_root_password_b64 }}' > secrets/minio_root_password.txt
-            test -s secrets/minio_root_password.txt
-            if [ -n "${{ steps.prepare.outputs.mysql_root_password_b64 }}" ]; then
-              decode '${{ steps.prepare.outputs.mysql_root_password_b64 }}' > secrets/mysql_root_password.txt
+          # 1. Постоянные secret-файлы (без завершающего \n)
+          decode "$MINIO_ROOT_PASSWORD_B64" > secrets/minio_root_password.txt
+          test -s secrets/minio_root_password.txt
+          [ -n "$MYSQL_ROOT_PASSWORD_B64" ] && decode "$MYSQL_ROOT_PASSWORD_B64" > secrets/mysql_root_password.txt
+          [ -n "$APP_MASTER_KEY_B64" ] && decode "$APP_MASTER_KEY_B64" > secrets/app_master_key.txt
+
+          # 2. CORS для MinIO
+          FRONTEND_ORIGIN="$(decode "$FRONTEND_ORIGIN_B64")"
+          test -n "$FRONTEND_ORIGIN"
+          sed -i "s|FRONTEND_ORIGIN_PLACEHOLDER|$FRONTEND_ORIGIN|g" minio-cors.json
+
+          # 3. Сети
+          docker network inspect app_internal >/dev/null 2>&1 || docker network create app_internal
+          docker network inspect air_shared >/dev/null 2>&1 || docker network create air_shared
+          docker network inspect monitoring_shared >/dev/null 2>&1 || docker network create monitoring_shared
+
+          # 4. .env для Docker Compose
+          DOMAIN_DEC="$(decode "$DOMAIN_B64")"
+          DB_USER_DEC="$(decode "$DB_USER_B64")"
+          DB_PASSWORD_DEC="$(decode "$DB_PASSWORD_B64")"
+          NOTIF_TG_IDS_DEC="$(decode "$NOTIF_TG_IDS_B64")"
+          echo "deploy: DB_USER='$DB_USER_DEC' DB_PASSWORD length=${#DB_PASSWORD_DEC}"
+          {
+            printf 'DOCKER_IMAGE=%s\n' "$REGISTRY/$REPO_OWNER/airorc:$GIT_SHA"
+            printf 'DOCKER_IMAGE_ALIAS=%s\n' "$REGISTRY/$REPO_OWNER/airorc:prod"
+            printf 'DOMAIN='; printf '%s' "$DOMAIN_DEC"; printf '\n'
+            printf 'DB_USER='; printf '%s' "$DB_USER_DEC"; printf '\n'
+            printf 'DB_PASSWORD='; printf '%s' "$DB_PASSWORD_DEC"; printf '\n'
+            printf 'NOTIF_TG_IDS='; printf '%s' "$NOTIF_TG_IDS_DEC"; printf '\n'
+          } > .env
+          chmod 600 .env
+
+          # 5. Инфраструктура
+          docker compose -f air-db.yml up -d
+          docker compose -f air-redis.yml up -d
+          docker compose -f air-loki.yml up -d
+          docker compose -f air-mon.yml up -d
+          docker compose -f air-promtail.yml up -d
+          docker compose -f air-s3.yml up -d
+          docker compose -f air-s3.yml run --rm minio-init
+
+          # 6. Приложение
+          docker compose -f prod.yml pull
+          docker compose -f prod.yml up -d --force-recreate
+          docker compose -f prod.yml ps
+          docker compose -f air-s3.yml ps
+          docker run --rm --network app_internal curlimages/curl:8.10.1 -fsS http://airorc:8080/v1/storage/health >/dev/null
+          docker image prune -f
+          REMOTE
+
+          for i in $(seq 1 5); do
+            if ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i ~/.ssh/id_deploy "$USERNAME@$HOST" \
+                "GH_TOKEN='$GH_TOKEN' ACTOR='$ACTOR' REGISTRY='$REGISTRY' REPO_OWNER='$REPO_OWNER' GIT_SHA='$GIT_SHA' DOMAIN_B64='$DOMAIN_B64' DB_USER_B64='$DB_USER_B64' DB_PASSWORD_B64='$DB_PASSWORD_B64' NOTIF_TG_IDS_B64='$NOTIF_TG_IDS_B64' FRONTEND_ORIGIN_B64='$FRONTEND_ORIGIN_B64' MINIO_ROOT_PASSWORD_B64='$MINIO_ROOT_PASSWORD_B64' MYSQL_ROOT_PASSWORD_B64='$MYSQL_ROOT_PASSWORD_B64' APP_MASTER_KEY_B64='$APP_MASTER_KEY_B64' bash -s" < /tmp/remote-deploy.sh; then
+              echo "deploy OK (attempt $i)"
+              exit 0
             fi
-            if [ -n "${{ steps.prepare.outputs.app_master_key_b64 }}" ]; then
-              decode '${{ steps.prepare.outputs.app_master_key_b64 }}' > secrets/app_master_key.txt
-            fi
-
-            # 2. CORS для MinIO
-            FRONTEND_ORIGIN="$(decode '${{ steps.prepare.outputs.frontend_origin_b64 }}')"
-            test -n "$FRONTEND_ORIGIN"
-            sed -i "s|FRONTEND_ORIGIN_PLACEHOLDER|$FRONTEND_ORIGIN|g" minio-cors.json
-
-            # 3. Сети
-            docker network inspect app_internal >/dev/null 2>&1 || docker network create app_internal
-            docker network inspect air_shared >/dev/null 2>&1 || docker network create air_shared
-            docker network inspect monitoring_shared >/dev/null 2>&1 || docker network create monitoring_shared
-
-            # 4. .env для Docker Compose
-            DOMAIN_DEC="$(decode '${{ steps.prepare.outputs.domain_b64 }}')"
-            DB_USER_DEC="$(decode '${{ steps.prepare.outputs.db_user_b64 }}')"
-            DB_PASSWORD_DEC="$(decode '${{ steps.prepare.outputs.db_password_b64 }}')"
-            NOTIF_TG_IDS_DEC="$(decode '${{ steps.prepare.outputs.notif_tg_ids_b64 }}')"
-            echo "deploy: DB_USER='$DB_USER_DEC' DB_PASSWORD length=${#DB_PASSWORD_DEC}"
-            {
-              printf 'DOCKER_IMAGE=%s\n' "${{ env.REGISTRY }}/${{ github.repository_owner }}/airorc:${{ github.sha }}"
-              printf 'DOCKER_IMAGE_ALIAS=%s\n' "${{ env.REGISTRY }}/${{ github.repository_owner }}/airorc:prod"
-              printf 'DOMAIN='; printf '%s' "$DOMAIN_DEC"; printf '\n'
-              printf 'DB_USER='; printf '%s' "$DB_USER_DEC"; printf '\n'
-              printf 'DB_PASSWORD='; printf '%s' "$DB_PASSWORD_DEC"; printf '\n'
-              printf 'NOTIF_TG_IDS='; printf '%s' "$NOTIF_TG_IDS_DEC"; printf '\n'
-            } > .env
-            chmod 600 .env
-
-            # 5. Инфраструктура
-            docker compose -f air-db.yml up -d
-            docker compose -f air-redis.yml up -d
-            docker compose -f air-loki.yml up -d
-            docker compose -f air-mon.yml up -d
-            docker compose -f air-promtail.yml up -d
-            docker compose -f air-s3.yml up -d
-            docker compose -f air-s3.yml run --rm minio-init
-
-            # 6. Приложение
-            docker compose -f prod.yml pull
-            docker compose -f prod.yml up -d --force-recreate
-            docker compose -f prod.yml ps
-            docker compose -f air-s3.yml ps
-            docker run --rm --network app_internal curlimages/curl:8.10.1 -fsS http://airorc:8080/v1/storage/health >/dev/null
-            docker image prune -f
+            echo "deploy attempt $i failed; retry in 15s"
+            sleep 15
+          done
+          echo "deploy failed after 5 attempts"
+          exit 1
