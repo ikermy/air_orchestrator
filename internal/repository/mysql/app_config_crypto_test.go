@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"air_orchestrator/internal/domain/state"
 )
 
 func TestAppConfigEncryptDecryptRoundTrip(t *testing.T) {
@@ -123,22 +125,11 @@ func TestIsAppConfigRekeyDryRun(t *testing.T) {
 	}
 }
 
-func TestLoadCurrentAppMasterKeyFromFile(t *testing.T) {
-	dir := t.TempDir()
-	secretFile := filepath.Join(dir, "app_master_key.txt")
-	if err := os.WriteFile(secretFile, []byte("file-master-key\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+func TestLoadCurrentAppMasterKey(t *testing.T) {
+	orig := state.MasterKey
+	defer func() { state.MasterKey = orig }()
 
-	origFile := os.Getenv("APP_MASTER_KEY_FILE")
-	origEnv := os.Getenv("APP_MASTER_KEY")
-	defer os.Setenv("APP_MASTER_KEY_FILE", origFile)
-	defer os.Setenv("APP_MASTER_KEY", origEnv)
-
-	_ = os.Unsetenv("APP_MASTER_KEY")
-	if err := os.Setenv("APP_MASTER_KEY_FILE", secretFile); err != nil {
-		t.Fatalf("Setenv APP_MASTER_KEY_FILE: %v", err)
-	}
+	state.MasterKey = []byte("file-master-key")
 
 	got, ok, err := loadCurrentAppMasterKey()
 	if err != nil {
@@ -182,21 +173,16 @@ func TestLoadNewAppMasterKeyFromFile(t *testing.T) {
 }
 
 func TestValidateAppConfigRekeyConfig(t *testing.T) {
-	origMaster := os.Getenv("APP_MASTER_KEY")
+	origMaster := state.MasterKey
 	origNew := os.Getenv("NEW_APP_MASTER_KEY")
-	origMasterFile := os.Getenv("APP_MASTER_KEY_FILE")
 	origNewFile := os.Getenv("NEW_APP_MASTER_KEY_FILE")
-	defer os.Setenv("APP_MASTER_KEY", origMaster)
+	defer func() { state.MasterKey = origMaster }()
 	defer os.Setenv("NEW_APP_MASTER_KEY", origNew)
-	defer os.Setenv("APP_MASTER_KEY_FILE", origMasterFile)
 	defer os.Setenv("NEW_APP_MASTER_KEY_FILE", origNewFile)
 
-	_ = os.Unsetenv("APP_MASTER_KEY_FILE")
 	_ = os.Unsetenv("NEW_APP_MASTER_KEY_FILE")
 
-	if err := os.Setenv("APP_MASTER_KEY", "old"); err != nil {
-		t.Fatalf("Setenv APP_MASTER_KEY: %v", err)
-	}
+	state.MasterKey = []byte("old")
 	if err := os.Setenv("NEW_APP_MASTER_KEY", "new"); err != nil {
 		t.Fatalf("Setenv NEW_APP_MASTER_KEY: %v", err)
 	}
