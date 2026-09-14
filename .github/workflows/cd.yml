@@ -132,7 +132,7 @@ jobs:
           # minio-cors.json не хранится в репозитории (лежит на сервере), поэтому
           # копируем только реально существующие пути — иначе scp падает на stat.
           files=""
-          for f in prod.yml air-db.yml air-loki.yml air-mon.yml air-promtail.yml air-redis.yml air-s3.yml minio-cors.json envoy monitoring; do
+          for f in prod.yml air-db.yml air-mon.yml air-vm.yml air-vlogs.yml air-vector.yml air-perses.yml air-redis.yml air-s3.yml minio-cors.json envoy monitoring; do
             if [ -e "$f" ]; then
               files="$files $f"
             else
@@ -216,11 +216,17 @@ jobs:
           chmod 600 .env
 
           # 5. Инфраструктура
+          # Старые сервисы мониторинга занимают порты 9090/3000/3100, которые
+          # нужны VictoriaMetrics/Perses/VictoriaLogs. Их compose-файлы удалены
+          # из репозитория, поэтому убираем контейнеры по именам (идемпотентно).
+          docker rm -f airorc_prometheus airorc_grafana air_loki air_promtail 2>/dev/null || true
           docker compose -f air-db.yml up -d
           docker compose -f air-redis.yml up -d
-          docker compose -f air-loki.yml up -d
+          docker compose -f air-vm.yml up -d
+          docker compose -f air-vlogs.yml up -d
+          docker compose -f air-vector.yml up -d
           docker compose -f air-mon.yml up -d
-          docker compose -f air-promtail.yml up -d
+          docker compose -f air-perses.yml up -d
           docker compose -f air-s3.yml up -d
           docker compose -f air-s3.yml run --rm minio-init
 

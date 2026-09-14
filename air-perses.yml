@@ -1,0 +1,27 @@
+services:
+  perses:
+    image: persesdev/perses:v0.54.0
+    container_name: airorc_perses
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./monitoring/perses/config.yaml:/etc/perses/config.yaml:ro
+      - ./monitoring/perses/provisioning:/etc/perses/provisioning:ro
+      - perses_data:/perses
+    command:
+      - "--config=/etc/perses/config.yaml"
+    networks:
+      - monitoring_shared
+      - app_internal
+
+volumes:
+  perses_data:
+
+networks:
+  monitoring_shared:
+    name: monitoring_shared
+    external: true
+  app_internal:
+    name: app_internal
+    external: true

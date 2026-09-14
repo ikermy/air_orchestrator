@@ -1,0 +1,12 @@
+kind: Datasource
+metadata:
+  name: VictoriaLogs
+  project: air
+spec:
+  plugin:
+    kind: VictoriaLogsDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://victorialogs:9428

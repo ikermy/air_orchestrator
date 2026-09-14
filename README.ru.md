@@ -50,16 +50,26 @@ air_orchestrator
 └── air_lead-hunter
 
 air-mon.yml
-├── cadvisor ── метрики Docker контейнеров
-├── prometheus ── сборка и хранение метрик
-└── grafana ── визуализация метрик
+└── cadvisor ── метрики Docker контейнеров
+
+air-vm.yml
+└── victoriametrics ── сборка и хранение метрик
+
+air-vlogs.yml
+└── victorialogs ── сборка и хранение логов
+
+air-vector.yml
+└── vector ── сбор логов Docker-контейнеров и отправка в VictoriaLogs
+
+air-perses.yml
+└── perses ── визуализация метрик и логов
 ```
 
 Сервисы взаимодействуют с orchestrator через HTTP/gRPC-контракты. Состав подключаемых сервисов определяется окружением и Docker-сетями `air_shared`, `app_internal` и `monitoring_shared`.
 
 ## Технологии
 
-Go 1.25, Gin, gRPC, Protocol Buffers, WebSocket, MariaDB/MySQL, Redis, MinIO/S3, AES-GCM, JWT, TOTP, Google OAuth, MCP Streamable HTTP, Docker, Envoy, Swagger/OpenAPI, Prometheus, Grafana и cAdvisor.
+Go 1.25, Gin, gRPC, Protocol Buffers, WebSocket, MariaDB/MySQL, Redis, MinIO/S3, AES-GCM, JWT, TOTP, Google OAuth, MCP Streamable HTTP, Docker, Envoy, Swagger/OpenAPI, VictoriaMetrics, VictoriaLogs, Perses, Vector и cAdvisor.
 
 ## Запуск
 
@@ -77,7 +87,11 @@ docker network create monitoring_shared
 docker compose -f air-db.yml up -d
 docker compose -f air-redis.yml up -d
 docker compose -f air-s3.yml up -d
+docker compose -f air-vm.yml up -d
+docker compose -f air-vlogs.yml up -d
+docker compose -f air-vector.yml up -d
 docker compose -f air-mon.yml up -d
+docker compose -f air-perses.yml up -d
 docker compose -f dev.yml up -d
 ```
 
@@ -85,13 +99,15 @@ docker compose -f dev.yml up -d
 
 ## Мониторинг
 
-`air-mon.yml` запускает cAdvisor, Prometheus и Grafana. Prometheus каждые 30 секунд собирает метрики orchestrator, связанных сервисов, контейнеров и MinIO.
+`air-vm.yml` запускает VictoriaMetrics, который каждые 30 секунд собирает метрики orchestrator, связанных сервисов, контейнеров (cAdvisor в `air-mon.yml`) и MinIO. `air-vlogs.yml` хранит логи, `air-vector.yml` собирает логи Docker-контейнеров через docker.sock и отправляет их в VictoriaLogs. Визуализация — в Perses (`air-perses.yml`, UI по адресу `/perses/`, дашборды провижнятся из `monitoring/perses`).
 
 ## Документация
 
 - [OpenAPI](doc/openapi.yaml)
 - [gRPC-контракт звонков](internal/delivery/grpc/v1/calls.proto)
-- [Конфигурация Prometheus](monitoring/prometheus.yml)
+- [Конфигурация VictoriaMetrics](monitoring/victoriametrics/prometheus.yml)
+- [Конфигурация Vector](monitoring/vector.yaml)
+- [Perses: конфигурация и дашборды](monitoring/perses)
 
 ## Экосистема marusia_ai
 

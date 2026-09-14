@@ -1,0 +1,29 @@
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.152.0
+    container_name: airorc_victoriametrics
+    restart: unless-stopped
+    ports:
+      - "9090:8428"
+    volumes:
+      - ./monitoring/victoriametrics/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - victoriametrics_data:/victoria-metrics-data
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--retentionPeriod=30d"
+      - "--http.maxGracefulShutdownDuration=10s"
+    networks:
+      - monitoring_shared
+      - app_internal
+
+volumes:
+  victoriametrics_data:
+
+networks:
+  monitoring_shared:
+    name: monitoring_shared
+    external: true
+  app_internal:
+    name: app_internal
+    external: true

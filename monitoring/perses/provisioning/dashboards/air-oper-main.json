@@ -1,0 +1,413 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "air-oper-main",
+    "project": "air"
+  },
+  "spec": {
+    "display": {
+      "name": "Operator"
+    },
+    "duration": "1h",
+    "refreshInterval": "15s",
+    "panels": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP RPS"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_oper_http_requests_total[5m]))",
+                    "seriesNameFormat": "RPS"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP Latency p95, s"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate(air_oper_http_request_duration_seconds_bucket[5m])) by (le, route))",
+                    "seriesNameFormat": "{{route}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Message Events"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_oper_message_events_total[5m])) by (source, result, message_type)",
+                    "seriesNameFormat": "{{source}} {{result}} {{message_type}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Telegram Send Attempts"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_oper_telegram_send_total[5m])) by (operation, result)",
+                    "seriesNameFormat": "{{operation}} {{result}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Telegram Send Latency p95, s"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate(air_oper_telegram_send_duration_seconds_bucket[5m])) by (le, operation))",
+                    "seriesNameFormat": "{{operation}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "History Requests"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_oper_history_requests_total[5m])) by (status)",
+                    "seriesNameFormat": "{{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "History Request Latency p95, s"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate(air_oper_history_request_duration_seconds_bucket[5m])) by (le, status))",
+                    "seriesNameFormat": "{{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Operator Sync Attempts"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_oper_operator_sync_total[5m])) by (status)",
+                    "seriesNameFormat": "{{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-9": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "SSE Sessions"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_oper_sse_sessions_total[5m])) by (event)",
+                    "seriesNameFormat": "{{event}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-10": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Active Dialogs"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "air_oper_active_dialogs",
+                    "seriesNameFormat": "dialogs"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-11": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Active Operators"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "air_oper_active_operators",
+                    "seriesNameFormat": "operators"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": ""
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-1"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-2"
+              }
+            },
+            {
+              "x": 0,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-3"
+              }
+            },
+            {
+              "x": 12,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-4"
+              }
+            },
+            {
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-5"
+              }
+            },
+            {
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-6"
+              }
+            },
+            {
+              "x": 0,
+              "y": 20,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-7"
+              }
+            },
+            {
+              "x": 12,
+              "y": 20,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-8"
+              }
+            },
+            {
+              "x": 0,
+              "y": 28,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-9"
+              }
+            },
+            {
+              "x": 0,
+              "y": 36,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-10"
+              }
+            },
+            {
+              "x": 6,
+              "y": 36,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-11"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

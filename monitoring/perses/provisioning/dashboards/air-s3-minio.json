@@ -1,0 +1,238 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "air-s3-minio",
+    "project": "air"
+  },
+  "spec": {
+    "display": {
+      "name": "Air S3 (MinIO)"
+    },
+    "duration": "1h",
+    "refreshInterval": "30s",
+    "panels": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "MinIO Up"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "up{job=\"minio\"}",
+                    "seriesNameFormat": "up"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Usable Capacity"
+          },
+          "plugin": {
+            "kind": "GaugeChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "100 * (1 - sum(minio_cluster_capacity_usable_free_bytes) / sum(minio_cluster_capacity_usable_total_bytes))",
+                    "seriesNameFormat": "used"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "S3 Requests"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(minio_s3_requests_total[5m])) by (api)",
+                    "seriesNameFormat": "{{api}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "S3 5xx Errors"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(minio_s3_requests_5xx_errors_total[5m])) by (api)",
+                    "seriesNameFormat": "{{api}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Free Capacity"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(minio_cluster_capacity_usable_free_bytes)",
+                    "seriesNameFormat": "free"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "MinIO Process Memory"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(minio_node_process_resident_memory_bytes)",
+                    "seriesNameFormat": "resident memory"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": ""
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-1"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-2"
+              }
+            },
+            {
+              "x": 0,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-3"
+              }
+            },
+            {
+              "x": 12,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-4"
+              }
+            },
+            {
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-5"
+              }
+            },
+            {
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-6"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

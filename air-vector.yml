@@ -1,0 +1,21 @@
+services:
+  vector:
+    image: timberio/vector:0.50.0-debian
+    container_name: airorc_vector
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vector_data:/var/lib/vector
+    command:
+      - "--config=/etc/vector/vector.yaml"
+    networks:
+      - monitoring_shared
+
+volumes:
+  vector_data:
+
+networks:
+  monitoring_shared:
+    name: monitoring_shared
+    external: true

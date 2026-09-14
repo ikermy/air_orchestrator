@@ -1,0 +1,13 @@
+kind: Datasource
+metadata:
+  name: VictoriaMetrics
+  project: air
+spec:
+  default: true
+  plugin:
+    kind: PrometheusDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://victoriametrics:8428

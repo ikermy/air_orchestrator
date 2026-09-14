@@ -50,16 +50,26 @@ air_orchestrator
 └── air_lead-hunter
 
 air-mon.yml
-├── cadvisor ── Docker container metrics
-├── prometheus ── metrics collection and storage
-└── grafana ── metrics visualization
+└── cadvisor ── Docker container metrics
+
+air-vm.yml
+└── victoriametrics ── metrics collection and storage
+
+air-vlogs.yml
+└── victorialogs ── logs collection and storage
+
+air-vector.yml
+└── vector ── Docker container log collection into VictoriaLogs
+
+air-perses.yml
+└── perses ── metrics and logs visualization
 ```
 
 Channel, CRM, payment and lead-hunting services communicate with the orchestrator through HTTP/gRPC contracts. The exact set of services depends on the deployment environment and Docker networks `air_shared`, `app_internal` and `monitoring_shared`.
 
 ## Technologies
 
-Go 1.25, Gin, gRPC, Protocol Buffers, WebSocket, MariaDB/MySQL, Redis, MinIO/S3, AES-GCM, JWT, TOTP, Google OAuth, MCP Streamable HTTP, Docker, Envoy, Swagger/OpenAPI, Prometheus, Grafana and cAdvisor.
+Go 1.25, Gin, gRPC, Protocol Buffers, WebSocket, MariaDB/MySQL, Redis, MinIO/S3, AES-GCM, JWT, TOTP, Google OAuth, MCP Streamable HTTP, Docker, Envoy, Swagger/OpenAPI, VictoriaMetrics, VictoriaLogs, Perses, Vector and cAdvisor.
 
 ## Running
 
@@ -77,7 +87,11 @@ For development:
 docker compose -f air-db.yml up -d
 docker compose -f air-redis.yml up -d
 docker compose -f air-s3.yml up -d
+docker compose -f air-vm.yml up -d
+docker compose -f air-vlogs.yml up -d
+docker compose -f air-vector.yml up -d
 docker compose -f air-mon.yml up -d
+docker compose -f air-perses.yml up -d
 docker compose -f dev.yml up -d
 ```
 
@@ -85,13 +99,15 @@ Use `prod.yml` for production. Secrets are mounted from `secrets/` and must not 
 
 ## Monitoring
 
-`air-mon.yml` starts cAdvisor, Prometheus and Grafana. Prometheus collects orchestrator, related-service, container and MinIO metrics every 30 seconds.
+`air-vm.yml` starts VictoriaMetrics, which collects orchestrator, related-service, container (cAdvisor via `air-mon.yml`) and MinIO metrics every 30 seconds. `air-vlogs.yml` stores logs, `air-vector.yml` collects Docker container logs through docker.sock and ships them to VictoriaLogs. Visualization is provided by Perses (`air-perses.yml`, UI at `/perses/`, dashboards provisioned from `monitoring/perses`).
 
 ## Documentation
 
 - [OpenAPI](doc/openapi.yaml)
 - [Calls gRPC contract](internal/delivery/grpc/v1/calls.proto)
-- [Prometheus configuration](monitoring/prometheus.yml)
+- [VictoriaMetrics configuration](monitoring/victoriametrics/prometheus.yml)
+- [Vector configuration](monitoring/vector.yaml)
+- [Perses configuration and dashboards](monitoring/perses)
 
 ## Ecosystem marusia_ai
 

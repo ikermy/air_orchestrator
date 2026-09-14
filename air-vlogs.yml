@@ -1,0 +1,22 @@
+services:
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.52.0
+    container_name: airorc_victorialogs
+    restart: unless-stopped
+    ports:
+      - "3100:9428"
+    volumes:
+      - victorialogs_data:/victoria-logs-data
+    command:
+      - "--storageDataPath=/victoria-logs-data"
+      - "--retentionPeriod=30d"
+    networks:
+      - monitoring_shared
+
+volumes:
+  victorialogs_data:
+
+networks:
+  monitoring_shared:
+    name: monitoring_shared
+    external: true

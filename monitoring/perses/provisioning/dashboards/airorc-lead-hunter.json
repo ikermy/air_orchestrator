@@ -1,0 +1,472 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "airorc-lead-hunter",
+    "project": "air"
+  },
+  "spec": {
+    "display": {
+      "name": "AiR Lead Hunter"
+    },
+    "duration": "6h",
+    "refreshInterval": "15s",
+    "panels": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Incoming Messages"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_messages_received_total[5m]))",
+                    "seriesNameFormat": "messages/s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Processed Messages"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_messages_processed_total[5m]))",
+                    "seriesNameFormat": "messages/s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Ignored Messages"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_messages_ignored_total[5m]))",
+                    "seriesNameFormat": "messages/s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP RPS"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_http_requests_total[5m]))",
+                    "seriesNameFormat": "RPS"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Messages Received by Type and Bot"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_messages_received_total[5m])) by (bot_id, message_type)",
+                    "seriesNameFormat": "{{bot_id}} / {{message_type}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Messages Ignored by Reason"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_messages_ignored_total[5m])) by (bot_id, reason)",
+                    "seriesNameFormat": "{{bot_id}} / {{reason}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Message Processing Results"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_messages_processed_total[5m])) by (bot_id, status)",
+                    "seriesNameFormat": "{{bot_id}} / {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Bot Lifecycle Events"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_bot_lifecycle_total[5m])) by (bot_id, action, status)",
+                    "seriesNameFormat": "{{bot_id}} / {{action}} / {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-9": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP Requests by Route"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_http_requests_total[5m])) by (method, route, status)",
+                    "seriesNameFormat": "{{method}} {{route}} {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-10": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP Latency p50 / p95 / p99, s"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.50, sum(rate(air_lead_hunter_http_request_duration_seconds_bucket[5m])) by (le))",
+                    "seriesNameFormat": "p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate(air_lead_hunter_http_request_duration_seconds_bucket[5m])) by (le))",
+                    "seriesNameFormat": "p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum(rate(air_lead_hunter_http_request_duration_seconds_bucket[5m])) by (le))",
+                    "seriesNameFormat": "p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-11": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Lead Contact Results"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_lead_contact_results_total[5m])) by (provider, status)",
+                    "seriesNameFormat": "{{provider}} / {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-12": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Provider Operations"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_lead_hunter_provider_operations_total[5m])) by (provider, operation, status)",
+                    "seriesNameFormat": "{{provider}} / {{operation}} / {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": ""
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-1"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-2"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-3"
+              }
+            },
+            {
+              "x": 18,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/panel-4"
+              }
+            },
+            {
+              "x": 0,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-5"
+              }
+            },
+            {
+              "x": 12,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-6"
+              }
+            },
+            {
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-7"
+              }
+            },
+            {
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-8"
+              }
+            },
+            {
+              "x": 0,
+              "y": 20,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-9"
+              }
+            },
+            {
+              "x": 12,
+              "y": 20,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-10"
+              }
+            },
+            {
+              "x": 0,
+              "y": 28,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-11"
+              }
+            },
+            {
+              "x": 12,
+              "y": 28,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-12"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

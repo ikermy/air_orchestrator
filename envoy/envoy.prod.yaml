@@ -161,9 +161,9 @@ static_resources:
                               - upgrade_type: websocket
 
                         - match:
-                            prefix: "/grafana/"
+                            prefix: "/perses"
                           route:
-                            cluster: grafana_http
+                            cluster: perses_http
                             timeout: 30s
 
                         - match:
@@ -323,19 +323,19 @@ static_resources:
                       address: acme_http
                       port_value: 80
 
-    - name: grafana_http
+    - name: perses_http
       connect_timeout: 5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:
-        cluster_name: grafana_http
+        cluster_name: perses_http
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: grafana
-                      port_value: 3000
+                      address: perses
+                      port_value: 8080
 
     - name: mysql_cluster
       connect_timeout: 1s

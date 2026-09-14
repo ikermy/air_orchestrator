@@ -1,0 +1,413 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "air-crm-main",
+    "project": "air"
+  },
+  "spec": {
+    "display": {
+      "name": "CRM"
+    },
+    "duration": "1h",
+    "refreshInterval": "15s",
+    "panels": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP RPS"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_crm_http_requests_total[5m]))",
+                    "seriesNameFormat": "RPS"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP In Flight"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "air_crm_http_requests_in_flight",
+                    "seriesNameFormat": "in flight"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP Latency p95, s"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate(air_crm_http_request_duration_seconds_bucket[5m])) by (le, route))",
+                    "seriesNameFormat": "{{route}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "HTTP Requests by Route/Status"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_crm_http_requests_total[5m])) by (method, route, status)",
+                    "seriesNameFormat": "{{method}} {{route}} {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "CRM API Requests RPS"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_crm_api_requests_total[5m])) by (operation, status)",
+                    "seriesNameFormat": "{{operation}} {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "CRM API Latency p95, s"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate(air_crm_api_request_duration_seconds_bucket[5m])) by (le, operation))",
+                    "seriesNameFormat": "{{operation}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "CRM API Errors"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_crm_api_errors_total[5m])) by (operation, reason)",
+                    "seriesNameFormat": "{{operation}} {{reason}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Entity Operations"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_crm_entity_operations_total[5m])) by (entity, operation, status)",
+                    "seriesNameFormat": "{{entity}} {{operation}} {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-9": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "OAuth Flows"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_crm_oauth_flows_total[5m])) by (provider, stage, status)",
+                    "seriesNameFormat": "{{provider}} {{stage}} {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-10": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Provider Requests"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_crm_provider_requests_total[5m])) by (provider, method, status)",
+                    "seriesNameFormat": "{{provider}} {{method}} {{status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-11": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Provider Latency p95, s"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate(air_crm_provider_request_duration_seconds_bucket[5m])) by (le, provider, method))",
+                    "seriesNameFormat": "{{provider}} {{method}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": ""
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/panel-1"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/panel-2"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/panel-3"
+              }
+            },
+            {
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-4"
+              }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-5"
+              }
+            },
+            {
+              "x": 12,
+              "y": 14,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-6"
+              }
+            },
+            {
+              "x": 0,
+              "y": 22,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-7"
+              }
+            },
+            {
+              "x": 12,
+              "y": 22,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-8"
+              }
+            },
+            {
+              "x": 0,
+              "y": 30,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-9"
+              }
+            },
+            {
+              "x": 12,
+              "y": 30,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-10"
+              }
+            },
+            {
+              "x": 0,
+              "y": 38,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/panel-11"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
