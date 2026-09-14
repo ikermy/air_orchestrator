@@ -6,7 +6,7 @@ services:
     ports:
       - "3000:8080"
     volumes:
-      - ./monitoring/perses/config.yaml:/etc/perses/config.yaml:ro
+      - ./monitoring/perses/perses-config.yaml:/etc/perses/config.yaml:ro
       - ./monitoring/perses/provisioning:/etc/perses/provisioning:ro
       - perses_data:/perses
     command:

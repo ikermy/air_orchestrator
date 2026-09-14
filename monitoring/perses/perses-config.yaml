@@ -1,0 +1,12 @@
+# Perses обслуживается за Envoy по пути /perses/ (см. envoy/*.yaml).
+api_prefix: "/perses"
+
+database:
+  file:
+    folder: "/perses"
+    extension: "json"
+
+provisioning:
+  folders:
+    - "/etc/perses/provisioning"
+  interval: "1h"
