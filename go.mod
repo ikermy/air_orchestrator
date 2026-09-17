@@ -19,7 +19,7 @@ require (
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/crypto v0.55.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 	google.golang.org/api v0.294.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
@@ -48,7 +48,6 @@ require (
 	github.com/go-openapi/jsonreference v1.0.2 // indirect
 	github.com/go-openapi/spec v0.22.11 // indirect
 	github.com/go-openapi/swag/conv v0.29.2 // indirect
-	github.com/go-openapi/swag/jsonname v0.26.1 // indirect
 	github.com/go-openapi/swag/jsonutils v0.29.2 // indirect
 	github.com/go-openapi/swag/loading v0.29.2 // indirect
 	github.com/go-openapi/swag/pools v0.29.2 // indirect
