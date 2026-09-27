@@ -113,6 +113,7 @@ Use `prod.yml` for production. Secrets are mounted from `secrets/` and must not 
 
 - [air-common](https://github.com/ikermy/air-common) — shared library for AI microservices
 - [air_orchestrator](https://github.com/ikermy/air_orchestrator) — main orchestration service
+- [air_front](https://github.com/ikermy/air_front) — Frontend react next.js dashboard for managing models, interaction channels, services...
 - [air_tgbot](https://github.com/ikermy/air_tgbot) — Telegram Bot operating in polling/webhook mode with delta streaming support
 - [air_tguserbot](https://github.com/ikermy/air_tguserbot) — Telegram user bot capable of receiving and making voice calls
 - [air_whatsbot](https://github.com/ikermy/air_whatsbot) — WhatsApp user bot without using the Graph API, capable of receiving and making voice calls

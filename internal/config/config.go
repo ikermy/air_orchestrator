@@ -65,8 +65,8 @@ const (
 	CRMURL        = "http://crm:8080"
 	OPERURL       = "http://oper:8080"
 	PAYURL        = "http://pay:8080"
-	// LokiURL — URL Loki API для чтения логов.
-	LokiURL = "http://air_loki:3100"
+	// VicLogsURL — URL Loki API для чтения логов.
+	VicLogsURL = "http://victorialogs:9428"
 	// LeadServiceURL — URL сервиса лидов.
 	LeadServiceURL = "http://hunter:8080"
 	// LeadServiceWS — WebSocket URL сервиса лидов.

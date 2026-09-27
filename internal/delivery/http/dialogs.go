@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -216,70 +215,120 @@ func (w *Web) fetchLokiLogs(ctx context.Context, userID uint32, limit int) ([]Lo
 }
 
 func (w *Web) fetchLokiLogsSince(ctx context.Context, userID uint32, limit int, since time.Time) ([]LogEntry, error) {
-	query := fmt.Sprintf(`{app="air"} |= "[USER:%d]"`, userID)
-
-	params := url.Values{}
-	params.Set("query", query)
-	params.Set("limit", strconv.Itoa(limit))
-	params.Set("direction", "forward")
+	// Запросим данные из VictoriaLogs (Elasticsearch-совместимый приём),
+	// куда Vector отправляет логи через endpoint /insert/elasticsearch/.
+	// Формируем DSL-запрос: фильтр по метке app=air и по вхождению [USER:ID] в поле message.
+	must := []interface{}{
+		map[string]interface{}{"match": map[string]interface{}{"app": "air"}},
+		map[string]interface{}{"match_phrase": map[string]interface{}{"message": fmt.Sprintf("[USER:%d]", userID)}},
+	}
+	boolQuery := map[string]interface{}{"must": must}
 	if !since.IsZero() {
-		params.Set("start", strconv.FormatInt(since.Add(time.Nanosecond).UnixNano(), 10))
+		// Фильтр по времени; ожидаем, что поле timestamp хранится в ISO8601
+		boolQuery["filter"] = []interface{}{
+			map[string]interface{}{"range": map[string]interface{}{"timestamp": map[string]interface{}{"gt": since.Format(time.RFC3339Nano)}}},
+		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, config.LokiURL+"/loki/api/v1/query_range?"+params.Encode(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("создание запроса в Loki: %w", err)
+	body := map[string]interface{}{
+		"size":  limit,
+		"query": map[string]interface{}{"bool": boolQuery},
+		"sort":  []interface{}{map[string]interface{}{"timestamp": map[string]string{"order": "asc"}}},
 	}
+
+	b, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("формирование запроса к VictoriaLogs: %w", err)
+	}
+
+	// Попробуем стандартный Elasticsearch-эндпоинт _search
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, config.VicLogsURL+"/_search", bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("создание запроса в VictoriaLogs: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("запрос в Loki: %w", err)
+		return nil, fmt.Errorf("запрос в VictoriaLogs: %w", err)
 	}
 	defer closeResponseBody(resp.Body, "fetchLokiLogsSince")
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Loki вернул статус %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("VictoriaLogs вернул статус %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	var lokiResp lokiQueryResponse
-	if err := json.NewDecoder(resp.Body).Decode(&lokiResp); err != nil {
-		return nil, fmt.Errorf("декодирование ответа Loki: %w", err)
+	// Ожидаем структуру ответа, совместимую с Elasticsearch _search
+	var esResp struct {
+		Hits struct {
+			Hits []struct {
+				Source struct {
+					Message       string      `json:"message"`
+					Timestamp     interface{} `json:"timestamp"`
+					ContainerName string      `json:"container_name"`
+					App           string      `json:"app"`
+					Service       string      `json:"service"`
+					Tier          string      `json:"tier"`
+				} `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&esResp); err != nil {
+		return nil, fmt.Errorf("декодирование ответа VictoriaLogs: %w", err)
 	}
 
 	var allLogs []LogEntry
-	for _, result := range lokiResp.Data.Result {
-		serviceName := result.Stream["service"]
+	for _, hit := range esResp.Hits.Hits {
+		src := hit.Source
+		var ts time.Time
+		switch v := src.Timestamp.(type) {
+		case string:
+			if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+				ts = t
+			} else if t, err := time.Parse(time.RFC3339, v); err == nil {
+				ts = t
+			}
+		case float64:
+			// возможно метка в секундах.millis
+			sec := int64(v)
+			ts = time.Unix(sec, 0)
+		case int64:
+			ts = time.Unix(v, 0)
+		default:
+			// оставляем нулевой ts — фильтрация по since не будет применена
+		}
+
+		if !since.IsZero() && !ts.After(since) {
+			continue
+		}
+
+		serviceName := src.Service
 		if serviceName == "" {
-			serviceName = result.Stream["container"]
+			serviceName = src.ContainerName
+		}
+		if serviceName == "" {
+			serviceName = src.App
 		}
 		if serviceName == "" {
 			serviceName = "unknown"
 		}
 
-		for _, value := range result.Values {
-			if len(value) < 2 {
-				continue
-			}
-			ns, err := strconv.ParseInt(value[0], 10, 64)
-			if err != nil {
-				continue
-			}
-			ts := time.Unix(0, ns)
-			if !since.IsZero() && !ts.After(since) {
-				continue
-			}
-			line := value[1]
-			if !strings.Contains(line, fmt.Sprintf("[USER:%d]", userID)) {
-				continue
-			}
-
-			allLogs = append(allLogs, LogEntry{
-				timestamp: ts,
-				message:   sanitizeUserLogLine(line),
-				fileName:  serviceName,
-			})
+		if src.Message == "" {
+			continue
 		}
+
+		// Проверяем, содержит ли сообщение маркер пользователя (на случай, если match_phrase не сработал)
+		if !strings.Contains(src.Message, fmt.Sprintf("[USER:%d]", userID)) {
+			continue
+		}
+
+		allLogs = append(allLogs, LogEntry{
+			timestamp: ts,
+			message:   sanitizeUserLogLine(src.Message),
+			fileName:  serviceName,
+		})
 	}
 
 	sort.Slice(allLogs, func(i, j int) bool {

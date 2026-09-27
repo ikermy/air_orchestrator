@@ -241,6 +241,7 @@ func (s *Scheduler) sendSubscriptionError(error *com.SubscriptionError) {
 	}
 }
 
+// TODO добавить проверку ИСТЕКАЮЩЕЙ подписки сейчас только уже истекшая
 func (s *Scheduler) checkUserSubscription(ctx context.Context) {
 	users, err := s.store.UsersWithoutSubscription()
 	if err != nil {
