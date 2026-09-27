@@ -1,6 +1,6 @@
 //go:build integration
 
-package db
+package mysql
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func initDB(t *testing.T) (*DB, context.CancelFunc) {
+func initDB(t *testing.T) (*Implementation, context.CancelFunc) {
 	t.Helper()
 
 	// Инициализируем логгер для тестов

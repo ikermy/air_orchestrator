@@ -4,35 +4,33 @@ import (
 	"context"
 	"sync"
 
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/ikermy/air-common/pkg/com"
-	"github.com/ikermy/air-common/pkg/comdb"
+	repoMysql "air_orchestrator/internal/repository/mysql"
+
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
+// DB — обёртка жизненного цикла подключения к MySQL поверх repoMysql.DB.
+// Все методы репозитория и comdb.Exterior продвигаются через встроенный
+// *repoMysql.DB, поэтому вызывающий код работает с *db.DB как с репозиторием.
 type DB struct {
-	*comdb.DB
-	migrationDone bool
-	migrationMu   sync.Mutex
+	*repoMysql.Implementation
 
 	done   sync.Once     // На всякий случай однократное закрытие канала
 	DoneCh chan struct{} // Канал уведомления о завершении операций пользователями ДБ
 	Exit   chan struct{} // Канал завершения работы приложения
 }
 
-func (d *DB) CheckUserSubscription(provider com.SubscriptionProvider, userID uint32) error {
-	return com.CheckUserSubscription(provider, userID)
-}
-
+// New создаёт подключение к БД и оборачивает репозиторий жизненным циклом.
 func New(parent context.Context) (*DB, error) {
-	db, err := comdb.New(parent)
+	inner, err := repoMysql.New(parent)
 	if err != nil {
 		return nil, err
 	}
+
 	return &DB{
-		DB:     db,
-		DoneCh: make(chan struct{}),
-		Exit:   make(chan struct{}),
+		Implementation: inner,
+		DoneCh:         make(chan struct{}),
+		Exit:           make(chan struct{}),
 	}, nil
 }
 
@@ -62,4 +60,14 @@ func (d *DB) CloseDoneCh() {
 
 func (d *DB) GetExitCh() <-chan struct{} {
 	return d.Exit
+}
+
+// IsAppConfigRekeyMode сообщает, запущено ли приложение в режиме перекодирования app_config.
+func IsAppConfigRekeyMode() bool {
+	return repoMysql.IsAppConfigRekeyMode()
+}
+
+// ValidateAppConfigRekeyConfig проверяет окружение для режима перекодирования app_config.
+func ValidateAppConfigRekeyConfig() error {
+	return repoMysql.ValidateAppConfigRekeyConfig()
 }

@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -10,14 +10,14 @@ import (
 	"github.com/ikermy/air-common/pkg/mode"
 )
 
-func (d *DB) GetUserDetails(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetUserDetails(userId uint32) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// SQL запрос для получения данных пользователя и подписки
@@ -55,7 +55,7 @@ WHERE u.Id = ?
 LIMIT 1`
 
 	var result []byte
-	err := d.Conn().QueryRowContext(ctx, query, userId).Scan(&result)
+	err := i.Conn().QueryRowContext(ctx, query, userId).Scan(&result)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -77,18 +77,18 @@ LIMIT 1`
 	return result, nil
 }
 
-func (d *DB) GetUserEmail(userId uint32) (string, error) {
+func (i *Implementation) GetUserEmail(userId uint32) (string, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return "", fmt.Errorf("получен некорректный userId")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var data sql.NullString
-	err := d.Conn().QueryRowContext(ctx, "SELECT Email FROM user_auth WHERE UserId = ?", userId).Scan(&data)
+	err := i.Conn().QueryRowContext(ctx, "SELECT Email FROM user_auth WHERE UserId = ?", userId).Scan(&data)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -109,14 +109,14 @@ func (d *DB) GetUserEmail(userId uint32) (string, error) {
 	return data.String, nil
 }
 
-func (d *DB) UserInfo(userID uint32) (json.RawMessage, error) {
+func (i *Implementation) UserInfo(userID uint32) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userID == 0 {
 		return nil, fmt.Errorf("получен некорректный userID")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// SQL запрос напрямую
@@ -190,7 +190,7 @@ func (d *DB) UserInfo(userID uint32) (json.RawMessage, error) {
 
 	// Выполняем запрос
 	var result []byte
-	err := d.Conn().QueryRowContext(ctx, query, userID).Scan(&result)
+	err := i.Conn().QueryRowContext(ctx, query, userID).Scan(&result)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -212,18 +212,18 @@ func (d *DB) UserInfo(userID uint32) (json.RawMessage, error) {
 	return result, nil
 }
 
-func (d *DB) DeleteAllUserData(userID uint32) error {
+func (i *Implementation) DeleteAllUserData(userID uint32) error {
 	// Проверяем входное значение
 	if userID == 0 {
 		return fmt.Errorf("получен некорректный userID")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Вызываем хранимую процедуру для удаления всех данных пользователя
-	_, err := d.Conn().ExecContext(ctx, "CALL DeleteAllUserData(?)", userID)
+	_, err := i.Conn().ExecContext(ctx, "CALL DeleteAllUserData(?)", userID)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -238,7 +238,7 @@ func (d *DB) DeleteAllUserData(userID uint32) error {
 	return nil
 }
 
-func (d *DB) SaveUserTimeZone(userID uint32, timeZone string) error {
+func (i *Implementation) SaveUserTimeZone(userID uint32, timeZone string) error {
 	// Проверяем входные значения
 	if userID == 0 || timeZone == "" {
 		return fmt.Errorf("получены некорректные значения: userId или timeZone пусты")
@@ -248,10 +248,10 @@ func (d *DB) SaveUserTimeZone(userID uint32, timeZone string) error {
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx, "UPDATE users SET TimeZone = ? WHERE Id = ?", timeZone, userID)
+	_, err := i.Conn().ExecContext(ctx, "UPDATE users SET TimeZone = ? WHERE Id = ?", timeZone, userID)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -266,7 +266,7 @@ func (d *DB) SaveUserTimeZone(userID uint32, timeZone string) error {
 	return nil
 }
 
-func (d *DB) SaveUserLanguage(userID uint32, language string) error {
+func (i *Implementation) SaveUserLanguage(userID uint32, language string) error {
 	// Проверяем входные значения
 	if userID == 0 || language == "" {
 		return fmt.Errorf("получены некорректные значения: userId или language пусты")
@@ -276,10 +276,10 @@ func (d *DB) SaveUserLanguage(userID uint32, language string) error {
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx,
+	_, err := i.Conn().ExecContext(ctx,
 		"UPDATE users SET lang = (SELECT id FROM languages WHERE Code=?) WHERE users.Id=?", language, userID)
 	if err != nil {
 		switch {
@@ -296,16 +296,16 @@ func (d *DB) SaveUserLanguage(userID uint32, language string) error {
 }
 
 // CheckDemo проверяет, является ли пользователь демо-пользователем (RoleId=1).
-func (d *DB) CheckDemo(userId uint32) (bool, error) {
+func (i *Implementation) CheckDemo(userId uint32) (bool, error) {
 	if userId == 0 {
 		return false, fmt.Errorf("получен пустой userId")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var roleId uint8
-	err := d.Conn().QueryRowContext(ctx, "SELECT RoleId FROM users WHERE Id = ?", userId).Scan(&roleId)
+	err := i.Conn().QueryRowContext(ctx, "SELECT RoleId FROM users WHERE Id = ?", userId).Scan(&roleId)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):

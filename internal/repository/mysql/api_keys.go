@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -16,12 +16,12 @@ import (
 // EncryptUserAPIKeysWSS шифрует все plaintext API-ключи пользователя его MasterKey ($mk$).
 // Вызывается один раз из CreateMasterKeyWSS сразу после генерации MasterKey.
 // masterKey — расшифрованный MasterKey из Exam.masterKeyCache.
-func (d *DB) EncryptUserAPIKeysWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 30*time.Second)
+func (i *Implementation) EncryptUserAPIKeysWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 
 	query := `SELECT Provider, ApiKey FROM user_api_keys WHERE UserId = ?`
-	rows, err := d.Conn().QueryContext(ctx, query, userId)
+	rows, err := i.Conn().QueryContext(ctx, query, userId)
 	if err != nil {
 		return fmt.Errorf("failed to get API keys: %w", err)
 	}
@@ -66,7 +66,7 @@ func (d *DB) EncryptUserAPIKeysWSS(userId uint32, masterKey [32]byte, progressCa
 			continue
 		}
 		updateQuery := `UPDATE user_api_keys SET ApiKey = ? WHERE UserId = ? AND Provider = ?`
-		if _, err := d.Conn().ExecContext(ctx, updateQuery, encryptedKey, userId, k.provider); err != nil {
+		if _, err := i.Conn().ExecContext(ctx, updateQuery, encryptedKey, userId, k.provider); err != nil {
 			logger.Error("Failed to save encrypted API key for provider %s: %v", k.provider, err, userId)
 			continue
 		}

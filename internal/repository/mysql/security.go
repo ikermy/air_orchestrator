@@ -1,7 +1,7 @@
-package db
+package mysql
 
 // security.go — методы безопасности: lazy migration bcrypt+AES, GetAuthData.
-// Вынесены в отдельный файл, чтобы избежать проблем с кодировкой в db.go.
+// Вынесены в отдельный файл, чтобы избежать проблем с кодировкой в repository.go.
 
 import (
 	"context"
@@ -20,12 +20,12 @@ import (
 // GetAuthData возвращает данные для авторизации, ища пользователя по plaintext Email
 // (старые пользователи) или по EmailHash (мигрированные/новые пользователи).
 // isLegacy=true означает что пользователь ещё не мигрирован (EmailHash IS NULL).
-func (d *DB) GetAuthData(email, emailHMAC string) (storedHash string, userId uint32, confirmed, disabled, isLegacy bool, err error) {
+func (i *Implementation) GetAuthData(email, emailHMAC string) (storedHash string, userId uint32, confirmed, disabled, isLegacy bool, err error) {
 	if email == "" && emailHMAC == "" {
 		return "", 0, false, false, false, fmt.Errorf("получены пустые значения")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	query := `
@@ -36,7 +36,7 @@ func (d *DB) GetAuthData(email, emailHMAC string) (storedHash string, userId uin
 	LIMIT 1`
 
 	var legacyInt int
-	scanErr := d.Conn().QueryRowContext(ctx, query, email, emailHMAC).
+	scanErr := i.Conn().QueryRowContext(ctx, query, email, emailHMAC).
 		Scan(&storedHash, &userId, &confirmed, &disabled, &legacyInt)
 	if scanErr != nil {
 		switch {
@@ -58,15 +58,15 @@ func (d *DB) GetAuthData(email, emailHMAC string) (storedHash string, userId uin
 // MigrateUserSecurity обновляет SHA и Email пользователя до более безопасного формата.
 // Обновляет только строки где EmailHash IS NULL (пользователь ещё не мигрирован).
 // После успешного обновления запускает проверку завершения общей миграции.
-func (d *DB) MigrateUserSecurity(userId uint32, newHash, encEmail, emailHMAC string) error {
+func (i *Implementation) MigrateUserSecurity(userId uint32, newHash, encEmail, emailHMAC string) error {
 	if userId == 0 || newHash == "" || encEmail == "" || emailHMAC == "" {
 		return fmt.Errorf("получены некорректные данные для миграции пользователя %d", userId)
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	result, err := d.Conn().ExecContext(ctx,
+	result, err := i.Conn().ExecContext(ctx,
 		"UPDATE user_auth SET SHA = ?, Email = ?, EmailHash = ? WHERE UserId = ? AND EmailHash IS NULL",
 		newHash, encEmail, emailHMAC, userId)
 	if err != nil {
@@ -80,7 +80,7 @@ func (d *DB) MigrateUserSecurity(userId uint32, newHash, encEmail, emailHMAC str
 
 	if rows > 0 {
 		logger.Info("DB: пользователь успешно мигрирован на bcrypt+AES", userId)
-		go d.checkAndFinalizeMigration()
+		go i.checkAndFinalizeMigration()
 	}
 
 	return nil
@@ -88,19 +88,19 @@ func (d *DB) MigrateUserSecurity(userId uint32, newHash, encEmail, emailHMAC str
 
 // checkAndFinalizeMigration проверяет, все ли пользователи прошли lazy migration.
 // Если COUNT(*) WHERE EmailHash IS NULL == 0 — выполняет финальный ALTER TABLE.
-func (d *DB) checkAndFinalizeMigration() {
-	d.migrationMu.Lock()
-	defer d.migrationMu.Unlock()
+func (i *Implementation) checkAndFinalizeMigration() {
+	i.migrationMu.Lock()
+	defer i.migrationMu.Unlock()
 
-	if d.migrationDone {
+	if i.migrationDone {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(i.Context(), 60*time.Second)
 	defer cancel()
 
 	var count int
-	if err := d.Conn().QueryRowContext(ctx,
+	if err := i.Conn().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM user_auth WHERE EmailHash IS NULL").Scan(&count); err != nil {
 		logger.Error("DB: ошибка проверки незамигрированных пользователей: %v", err)
 		return
@@ -112,13 +112,13 @@ func (d *DB) checkAndFinalizeMigration() {
 	}
 
 	// Все пользователи мигрированы — финализируем схему
-	if _, err := d.Conn().ExecContext(ctx,
+	if _, err := i.Conn().ExecContext(ctx,
 		"ALTER TABLE user_auth MODIFY `EmailHash` VARCHAR(64) NOT NULL COLLATE 'utf8mb4_general_ci'"); err != nil {
 		logger.Error("DB: ошибка финализации миграции (NOT NULL): %v", err)
 		return
 	}
 
-	d.migrationDone = true
+	i.migrationDone = true
 	logger.Info("DB: lazy migration завершена — EmailHash переведён в NOT NULL")
 }
 
@@ -127,11 +127,11 @@ func (d *DB) checkAndFinalizeMigration() {
 // ============================================================================
 // SaveTOTPSecret сохраняет зашифрованный TOTP secret.
 // TOTPSecret IS NOT NULL означает, что TOTP включён для пользователя.
-func (d *DB) SaveTOTPSecret(ctx context.Context, userId uint32, encSecret string) error {
+func (i *Implementation) SaveTOTPSecret(ctx context.Context, userId uint32, encSecret string) error {
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx,
+	_, err := i.Conn().ExecContext(ctx,
 		"UPDATE user_auth SET TOTPSecret = ? WHERE UserId = ?",
 		encSecret, userId)
 	if err != nil {
@@ -142,12 +142,12 @@ func (d *DB) SaveTOTPSecret(ctx context.Context, userId uint32, encSecret string
 
 // GetTOTPData возвращает зашифрованный TOTP secret.
 // enabled = true когда TOTPSecret IS NOT NULL (тогда TOTP активен).
-func (d *DB) GetTOTPData(ctx context.Context, userId uint32) (encSecret string, enabled bool, err error) {
+func (i *Implementation) GetTOTPData(ctx context.Context, userId uint32) (encSecret string, enabled bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var secret sql.NullString
-	scanErr := d.Conn().QueryRowContext(ctx,
+	scanErr := i.Conn().QueryRowContext(ctx,
 		"SELECT TOTPSecret FROM user_auth WHERE UserId = ?", userId).
 		Scan(&secret)
 	if scanErr != nil {
@@ -167,11 +167,11 @@ func (d *DB) GetTOTPData(ctx context.Context, userId uint32) (encSecret string, 
 }
 
 // ClearTOTPSecret обнуляет TOTPSecret — отключает TOTP для пользователя.
-func (d *DB) ClearTOTPSecret(ctx context.Context, userId uint32) error {
+func (i *Implementation) ClearTOTPSecret(ctx context.Context, userId uint32) error {
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx,
+	_, err := i.Conn().ExecContext(ctx,
 		"UPDATE user_auth SET TOTPSecret = NULL WHERE UserId = ?", userId)
 	if err != nil {
 		return fmt.Errorf("ошибка удаления TOTP secret: %w", err)
@@ -187,12 +187,12 @@ func (d *DB) ClearTOTPSecret(ctx context.Context, userId uint32) error {
 // Используется при первичной генерации и при смене/сбросе пароля.
 // GetPasswordHash возвращает сохранённый хеш пароля (bcrypt или legacy SHA3) по userId.
 // Используется для верификации пароля без знания email (например, в CreateMasterKey).
-func (d *DB) GetPasswordHash(userId uint32) (string, error) {
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+func (i *Implementation) GetPasswordHash(userId uint32) (string, error) {
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var storedHash string
-	err := d.Conn().QueryRowContext(ctx,
+	err := i.Conn().QueryRowContext(ctx,
 		"SELECT SHA FROM user_auth WHERE UserId = ?", userId).Scan(&storedHash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -203,11 +203,11 @@ func (d *DB) GetPasswordHash(userId uint32) (string, error) {
 	return storedHash, nil
 }
 
-func (d *DB) SaveMasterKey(userId uint32, encMK, wrapSalt string) error {
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+func (i *Implementation) SaveMasterKey(userId uint32, encMK, wrapSalt string) error {
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx,
+	_, err := i.Conn().ExecContext(ctx,
 		"UPDATE user_auth SET MasterKey = ?, WrapSalt = ? WHERE UserId = ?",
 		encMK, wrapSalt, userId)
 	if err != nil {
@@ -218,12 +218,12 @@ func (d *DB) SaveMasterKey(userId uint32, encMK, wrapSalt string) error {
 
 // GetMasterKeyData возвращает зашифрованный MasterKey и соль.
 // hasMK=false если MasterKey ещё не создан (колонки NULL).
-func (d *DB) GetMasterKeyData(userId uint32) (encMK, wrapSalt string, hasMK bool, err error) {
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+func (i *Implementation) GetMasterKeyData(userId uint32) (encMK, wrapSalt string, hasMK bool, err error) {
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var mk, ws sql.NullString
-	scanErr := d.Conn().QueryRowContext(ctx,
+	scanErr := i.Conn().QueryRowContext(ctx,
 		"SELECT MasterKey, WrapSalt FROM user_auth WHERE UserId = ?", userId).
 		Scan(&mk, &ws)
 	if scanErr != nil {
@@ -242,11 +242,11 @@ func (d *DB) GetMasterKeyData(userId uint32) (encMK, wrapSalt string, hasMK bool
 
 // ClearMasterKey обнуляет MasterKey и WrapSalt пользователя.
 // Вызывается при сбросе пароля без raw MasterKey — после удаления всех зашифрованных данных.
-func (d *DB) ClearMasterKey(userId uint32) error {
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+func (i *Implementation) ClearMasterKey(userId uint32) error {
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx,
+	_, err := i.Conn().ExecContext(ctx,
 		"UPDATE user_auth SET MasterKey = NULL, WrapSalt = NULL WHERE UserId = ?", userId)
 	if err != nil {
 		return fmt.Errorf("ошибка очистки MasterKey: %w", err)
@@ -256,15 +256,15 @@ func (d *DB) ClearMasterKey(userId uint32) error {
 
 // DeleteEncryptedUserData удаляет все зашифрованные данные пользователя из БД.
 // Вызывается при сбросе пароля без raw MasterKey (ключ утрачен — данные недоступны).
-func (d *DB) DeleteEncryptedUserData(userId uint32) error {
+func (i *Implementation) DeleteEncryptedUserData(userId uint32) error {
 	if userId == 0 {
 		return fmt.Errorf("получен некорректный userId")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции удаления зашифрованных данных: %w", err)
 	}
@@ -296,17 +296,17 @@ func (d *DB) DeleteEncryptedUserData(userId uint32) error {
 	return nil
 }
 
-func (d *DB) decryptChannelField(userId uint32, s sql.NullString) json.RawMessage {
+func (i *Implementation) decryptChannelField(userId uint32, s sql.NullString) json.RawMessage {
 	if !s.Valid || s.String == "" {
 		return json.RawMessage(`{}`)
 	}
 	val := s.String
 	if crypto.IsEncryptedWithMasterKey(val) {
-		if d.MasterKeyResolver == nil {
+		if i.MasterKeyResolver == nil {
 			logger.Warn("GetChannelsData: MasterKey resolver not configured", userId)
 			return json.RawMessage(`{}`)
 		}
-		mk, ok := d.MasterKeyResolver(userId)
+		mk, ok := i.MasterKeyResolver(userId)
 		if !ok {
 			logger.Warn("GetChannelsData: MasterKey not in cache (login required)", userId)
 			return json.RawMessage(`{}`)
@@ -327,8 +327,8 @@ func (d *DB) decryptChannelField(userId uint32, s sql.NullString) json.RawMessag
 
 // EncryptChannelsWSS шифрует существующие plaintext данные каналов MasterKey'ом ($mk$).
 // Вызывается из CreateMasterKeyWSS после генерации MasterKey.
-func (d *DB) EncryptChannelsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 30*time.Second)
+func (i *Implementation) EncryptChannelsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 
 	type colDef struct {
@@ -345,7 +345,7 @@ func (d *DB) EncryptChannelsWSS(userId uint32, masterKey [32]byte, progressCallb
 		{name: "avito", col: "Avito"},
 	}
 
-	err := d.Conn().QueryRowContext(ctx,
+	err := i.Conn().QueryRowContext(ctx,
 		`SELECT TgBot, Widget, TgUserBot, Whats, Insta, Avito FROM channels WHERE UserId = ?`, userId).
 		Scan(&cols[0].val, &cols[1].val, &cols[2].val, &cols[3].val, &cols[4].val, &cols[5].val)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -359,8 +359,8 @@ func (d *DB) EncryptChannelsWSS(userId uint32, masterKey [32]byte, progressCallb
 	}
 
 	encrypted := 0
-	for i := range cols {
-		c := &cols[i]
+	for col := range cols {
+		c := &cols[col]
 		if !c.val.Valid || c.val.String == "" || crypto.IsEncryptedWithMasterKey(c.val.String) {
 			continue
 		}
@@ -372,7 +372,7 @@ func (d *DB) EncryptChannelsWSS(userId uint32, masterKey [32]byte, progressCallb
 			logger.Error("EncryptChannelsWSS: failed to encrypt %s: %v", c.col, encErr, userId)
 			continue
 		}
-		if _, updErr := d.Conn().ExecContext(ctx,
+		if _, updErr := i.Conn().ExecContext(ctx,
 			fmt.Sprintf("UPDATE channels SET %s = ? WHERE UserId = ?", c.col), encVal, userId); updErr != nil {
 			logger.Error("EncryptChannelsWSS: failed to save %s: %v", c.col, updErr, userId)
 			continue
@@ -392,11 +392,11 @@ func (d *DB) EncryptChannelsWSS(userId uint32, masterKey [32]byte, progressCallb
 }
 
 // EncryptDialogsWSS шифрует все plaintext Data во всех диалогах пользователя.
-func (d *DB) EncryptDialogsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 60*time.Second)
+func (i *Implementation) EncryptDialogsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 60*time.Second)
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT Id, Data FROM dialogs WHERE `User` = ?", userId)
 	if err != nil {
 		return fmt.Errorf("EncryptDialogsWSS: query: %w", err)
@@ -441,7 +441,7 @@ func (d *DB) EncryptDialogsWSS(userId uint32, masterKey [32]byte, progressCallba
 			logger.Error("EncryptDialogsWSS: encrypt dialog %d: %v", r.id, err, userId)
 			continue
 		}
-		if _, err := d.Conn().ExecContext(ctx,
+		if _, err := i.Conn().ExecContext(ctx,
 			"UPDATE dialogs SET Data = ? WHERE Id = ?", encVal, r.id); err != nil {
 			logger.Error("EncryptDialogsWSS: update dialog %d: %v", r.id, err, userId)
 			continue
@@ -457,12 +457,12 @@ func (d *DB) EncryptDialogsWSS(userId uint32, masterKey [32]byte, progressCallba
 }
 
 // EncryptGoogleTokenWSS шифрует access_token и refresh_token Google OAuth токенов MasterKey'ом.
-func (d *DB) EncryptGoogleTokenWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 30*time.Second)
+func (i *Implementation) EncryptGoogleTokenWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 
 	var accessToken, refreshToken sql.NullString
-	err := d.Conn().QueryRowContext(ctx,
+	err := i.Conn().QueryRowContext(ctx,
 		"SELECT access_token, refresh_token FROM google_oauth_tokens WHERE user_id = ?", userId).
 		Scan(&accessToken, &refreshToken)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -496,7 +496,7 @@ func (d *DB) EncryptGoogleTokenWSS(userId uint32, masterKey [32]byte, progressCa
 	}
 
 	if changed {
-		_, err = d.Conn().ExecContext(ctx,
+		_, err = i.Conn().ExecContext(ctx,
 			"UPDATE google_oauth_tokens SET access_token = ?, refresh_token = ? WHERE user_id = ?",
 			newAccess, newRefresh, userId)
 		if err != nil {
@@ -515,11 +515,11 @@ func (d *DB) EncryptGoogleTokenWSS(userId uint32, masterKey [32]byte, progressCa
 	return nil
 }
 
-func (d *DB) EncryptVectorEmbeddingsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 120*time.Second) // документов может быть много
+func (i *Implementation) EncryptVectorEmbeddingsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second) // документов может быть много
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT id, doc_name, content FROM vector_embeddings WHERE user_id = ?", userId)
 	if err != nil {
 		return fmt.Errorf("EncryptVectorEmbeddingsWSS: query: %w", err)
@@ -554,7 +554,7 @@ func (d *DB) EncryptVectorEmbeddingsWSS(userId uint32, masterKey [32]byte, progr
 	for _, r := range toEncrypt {
 		encName, _ := crypto.EncryptFieldWithMasterKey(masterKey, r.docName)
 		encContent, _ := crypto.EncryptFieldWithMasterKey(masterKey, r.content)
-		d.Conn().ExecContext(ctx,
+		i.Conn().ExecContext(ctx,
 			"UPDATE vector_embeddings SET doc_name = ?, content = ? WHERE id = ?",
 			encName, encContent, r.id)
 		encrypted++
@@ -564,11 +564,11 @@ func (d *DB) EncryptVectorEmbeddingsWSS(userId uint32, masterKey [32]byte, progr
 	return nil
 }
 
-func (d *DB) EncryptCRMConfigsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 120*time.Second)
+func (i *Implementation) EncryptCRMConfigsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second)
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT id, name, subdomain, credentials, options, channels FROM crm_configs WHERE user_id = ?", userId)
 	if err != nil {
 		return fmt.Errorf("EncryptCRMConfigsWSS: query: %w", err)
@@ -626,7 +626,7 @@ func (d *DB) EncryptCRMConfigsWSS(userId uint32, masterKey [32]byte, progressCal
 			encChannels, _ = crypto.EncryptFieldWithMasterKey(masterKey, r.channels.String)
 		}
 
-		_, err = d.Conn().ExecContext(ctx,
+		_, err = i.Conn().ExecContext(ctx,
 			"UPDATE crm_configs SET name = ?, subdomain = ?, credentials = ?, options = ?, channels = ? WHERE id = ?",
 			encName, encSubdomain, encCredentials, encOptions, encChannels, r.id)
 		if err != nil {
@@ -639,11 +639,11 @@ func (d *DB) EncryptCRMConfigsWSS(userId uint32, masterKey [32]byte, progressCal
 	return nil
 }
 
-func (d *DB) EncryptCRMOAuthStatesWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 120*time.Second)
+func (i *Implementation) EncryptCRMOAuthStatesWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second)
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT state, client_id, client_secret, redirect_url, subdomain, crm_type FROM crm_oauth_states WHERE user_id = ?", userId)
 	if err != nil {
 		return fmt.Errorf("EncryptCRMOAuthStatesWSS: query: %w", err)
@@ -690,7 +690,7 @@ func (d *DB) EncryptCRMOAuthStatesWSS(userId uint32, masterKey [32]byte, progres
 		encRedirectURL, _ := crypto.EncryptFieldWithMasterKey(masterKey, r.redirectURL)
 		encSubdomain, _ := crypto.EncryptFieldWithMasterKey(masterKey, r.subdomain)
 
-		_, err = d.Conn().ExecContext(ctx,
+		_, err = i.Conn().ExecContext(ctx,
 			"UPDATE crm_oauth_states SET client_id = ?, client_secret = ?, redirect_url = ?, subdomain = ?, crm_type = ? WHERE state = ?",
 			encClientID, encClientSecret, encRedirectURL, encSubdomain, r.crmType, r.state)
 		if err != nil {
@@ -703,11 +703,11 @@ func (d *DB) EncryptCRMOAuthStatesWSS(userId uint32, masterKey [32]byte, progres
 	return nil
 }
 
-func (d *DB) EncryptUserStorageConfigWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+func (i *Implementation) EncryptUserStorageConfigWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT access_key_ciphertext, secret_key_ciphertext FROM user_storage_config WHERE user_id = ?", userId)
 	if err != nil {
 		return fmt.Errorf("EncryptUserStorageConfigWSS: query: %w", err)
@@ -752,7 +752,7 @@ func (d *DB) EncryptUserStorageConfigWSS(userId uint32, masterKey [32]byte, prog
 			encSecretKeyCiphertext, _ = crypto.EncryptFieldWithMasterKey(masterKey, r.secretKeyCiphertext.String)
 		}
 
-		_, err = d.Conn().ExecContext(ctx,
+		_, err = i.Conn().ExecContext(ctx,
 			"UPDATE user_storage_config SET access_key_ciphertext = ?, secret_key_ciphertext = ? WHERE user_id = ?",
 			encAccessKeyCiphertext, encSecretKeyCiphertext, userId)
 		if err != nil {
@@ -765,13 +765,13 @@ func (d *DB) EncryptUserStorageConfigWSS(userId uint32, masterKey [32]byte, prog
 	return nil
 }
 
-func (d *DB) EncryptUserStorageServicesBotDataWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
-	ctx, cancel := context.WithTimeout(d.Context(), 120*time.Second)
+func (i *Implementation) EncryptUserStorageServicesBotDataWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second)
 	defer cancel()
 
 	// Универсальная функция для одной таблицы
 	encryptTable := func(table string) error {
-		rows, err := d.Conn().QueryContext(ctx,
+		rows, err := i.Conn().QueryContext(ctx,
 			fmt.Sprintf("SELECT Id, AuthData FROM %s WHERE UserId = ?", table), userId)
 		if err != nil {
 			return fmt.Errorf("EncryptUserStorageServicesBotDataWSS: query %s: %w", table, err)
@@ -810,7 +810,7 @@ func (d *DB) EncryptUserStorageServicesBotDataWSS(userId uint32, masterKey [32]b
 		for _, r := range toEncrypt {
 			encAuthData, _ := crypto.EncryptFieldWithMasterKey(masterKey, r.authData.String)
 
-			_, err = d.Conn().ExecContext(ctx,
+			_, err = i.Conn().ExecContext(ctx,
 				fmt.Sprintf("UPDATE %s SET AuthData = ? WHERE Id = ?", table),
 				encAuthData, r.id)
 			if err != nil {

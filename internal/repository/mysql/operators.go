@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/ikermy/air-common/pkg/mode"
 )
 
-func (d *DB) OperatorsList(ctx context.Context, userID uint32) (json.RawMessage, error) {
+func (i *Implementation) OperatorsList(ctx context.Context, userID uint32) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userID == 0 {
 		return nil, fmt.Errorf("получен некорректный userID")
@@ -21,7 +21,7 @@ func (d *DB) OperatorsList(ctx context.Context, userID uint32) (json.RawMessage,
 	defer cancel()
 
 	var result sql.NullString
-	err := d.Conn().QueryRowContext(ctx, "SELECT Telegram FROM operators WHERE UserId = ?", userID).Scan(&result)
+	err := i.Conn().QueryRowContext(ctx, "SELECT Telegram FROM operators WHERE UserId = ?", userID).Scan(&result)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -45,7 +45,7 @@ func (d *DB) OperatorsList(ctx context.Context, userID uint32) (json.RawMessage,
 }
 
 // SaveOperators сохраняет список операторов в таблицу operators через SP SaveOperators.
-func (d *DB) SaveOperators(ctx context.Context, userID uint32, operatorType string, data json.RawMessage) error {
+func (i *Implementation) SaveOperators(ctx context.Context, userID uint32, operatorType string, data json.RawMessage) error {
 	// Проверяем входные значения
 	if userID == 0 || operatorType == "" {
 		return fmt.Errorf("получены некорректные значения: userID или operatorType пусты")
@@ -70,7 +70,7 @@ func (d *DB) SaveOperators(ctx context.Context, userID uint32, operatorType stri
 	}
 
 	// Выполняем запрос
-	_, err := d.Conn().ExecContext(ctx, query, userID, string(data), string(data))
+	_, err := i.Conn().ExecContext(ctx, query, userID, string(data), string(data))
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):

@@ -1,6 +1,6 @@
 //go:build integration
 
-package db
+package mysql
 
 import (
 	"air_orchestrator/internal/domain/state"
@@ -21,7 +21,7 @@ import (
 
 const testEncryptChannelsUserID uint32 = 23
 
-func initDBAndExamForSecurityIntegrationTest(t *testing.T) (*DB, *exam.Exam, context.CancelFunc) {
+func initDBAndExamForSecurityIntegrationTest(t *testing.T) (*Implementation, *exam.Exam, context.CancelFunc) {
 	t.Helper()
 
 	logger.StdOut().WithLogLevel(logger.DEBUG).Apply()
@@ -164,7 +164,7 @@ type channelSnapshot struct {
 	Avito     sql.NullString
 }
 
-func readChannelColumns(t *testing.T, d *DB, userID uint32) (channelSnapshot, error) {
+func readChannelColumns(t *testing.T, d *Implementation, userID uint32) (channelSnapshot, error) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())

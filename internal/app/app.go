@@ -2,6 +2,7 @@ package app
 
 import (
 	"air_orchestrator/internal/config"
+	db "air_orchestrator/internal/db"
 	"air_orchestrator/internal/delivery/grpc"
 	web "air_orchestrator/internal/delivery/http"
 	"air_orchestrator/internal/delivery/mcp"
@@ -11,7 +12,6 @@ import (
 	cron "air_orchestrator/internal/infrastructure/scheduler"
 	exam "air_orchestrator/internal/infrastructure/security"
 	"air_orchestrator/internal/infrastructure/smtp"
-	db "air_orchestrator/internal/repository/mysql"
 	adminuc "air_orchestrator/internal/usecase/admin"
 	authuc "air_orchestrator/internal/usecase/auth"
 	masterkeyuc "air_orchestrator/internal/usecase/masterkey"

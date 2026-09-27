@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -13,12 +13,12 @@ import (
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-func (d *DB) FastCheckActiveUserModel(userID uint32) (bool, error) {
+func (i *Implementation) FastCheckActiveUserModel(userID uint32) (bool, error) {
 	if userID == 0 {
 		return false, fmt.Errorf("неверный userID")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	query := `
@@ -29,7 +29,7 @@ func (d *DB) FastCheckActiveUserModel(userID uint32) (bool, error) {
 	) AS HasActive`
 
 	var hay bool
-	scanErr := d.Conn().QueryRowContext(ctx, query, userID).Scan(&hay)
+	scanErr := i.Conn().QueryRowContext(ctx, query, userID).Scan(&hay)
 	if scanErr != nil {
 		switch {
 		case errors.Is(scanErr, context.DeadlineExceeded):
@@ -44,18 +44,18 @@ func (d *DB) FastCheckActiveUserModel(userID uint32) (bool, error) {
 	return hay, nil
 }
 
-func (d *DB) DeleteFileFromUserGPT(userId uint32, fileID string) error {
+func (i *Implementation) DeleteFileFromUserGPT(userId uint32, fileID string) error {
 	// Проверяем входные значения
 	if userId == 0 || fileID == "" {
 		return fmt.Errorf("получены некорректные значения: userId или fileID пусты")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -157,18 +157,18 @@ func (d *DB) DeleteFileFromUserGPT(userId uint32, fileID string) error {
 	return nil
 }
 
-func (d *DB) AddFileFromUserGPT(userId uint32, fileID, fileName string) error {
+func (i *Implementation) AddFileFromUserGPT(userId uint32, fileID, fileName string) error {
 	// Проверяем входные значения
 	if userId == 0 || fileID == "" || fileName == "" {
 		return fmt.Errorf("получены некорректные значения: userId, fileID или fileName пусты")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -236,9 +236,9 @@ func (d *DB) AddFileFromUserGPT(userId uint32, fileID, fileName string) error {
 	return nil
 }
 
-func (d *DB) GetTypesGPT(provider comdom.ProviderType, modelType comdom.ModelType) (json.RawMessage, error) {
+func (i *Implementation) GetTypesGPT(provider comdom.ProviderType, modelType comdom.ModelType) (json.RawMessage, error) {
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// SQL запрос напрямую
@@ -267,7 +267,7 @@ func (d *DB) GetTypesGPT(provider comdom.ProviderType, modelType comdom.ModelTyp
 
 	// Выполняем запрос
 	var result []byte
-	err := d.Conn().QueryRowContext(ctx, query, provider).Scan(&result)
+	err := i.Conn().QueryRowContext(ctx, query, provider).Scan(&result)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):

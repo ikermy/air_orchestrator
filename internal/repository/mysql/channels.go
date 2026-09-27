@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-// SaveChannelData переопределяет db.go:SaveChannelData с поддержкой $mk$.
-func (d *DB) SaveChannelData(userId uint32, channelType string, data string, enabled bool) error {
+// SaveChannelData переопределяет repository.go:SaveChannelData с поддержкой $mk$.
+func (i *Implementation) SaveChannelData(userId uint32, channelType string, data string, enabled bool) error {
 	if userId == 0 || channelType == "" {
 		return fmt.Errorf("получены некорректные значения: userId или channelType пусты")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	enabledInt := 0
@@ -41,8 +41,8 @@ func (d *DB) SaveChannelData(userId uint32, channelType string, data string, ena
 	}
 
 	// Шифруем данные канала MasterKey'ом ($mk$) если он доступен
-	if d.MasterKeyResolver != nil {
-		if mk, ok := d.MasterKeyResolver(userId); ok {
+	if i.MasterKeyResolver != nil {
+		if mk, ok := i.MasterKeyResolver(userId); ok {
 			encrypted, err := crypto.EncryptFieldWithMasterKey(mk, jsonData)
 			if err != nil {
 				return fmt.Errorf("failed to encrypt channel data with MasterKey: %w", err)
@@ -51,7 +51,7 @@ func (d *DB) SaveChannelData(userId uint32, channelType string, data string, ena
 		}
 	}
 
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -93,17 +93,17 @@ func (d *DB) SaveChannelData(userId uint32, channelType string, data string, ena
 	return tx.Commit()
 }
 
-// GetChannelsData переопределяет db.go:GetChannelsData с поддержкой $mk$-расшифровки.
-func (d *DB) GetChannelsData(userId uint32) (json.RawMessage, error) {
+// GetChannelsData переопределяет repository.go:GetChannelsData с поддержкой $mk$-расшифровки.
+func (i *Implementation) GetChannelsData(userId uint32) (json.RawMessage, error) {
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var exists bool
-	if err := d.Conn().QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channels WHERE UserId = ?)", userId).Scan(&exists); err != nil {
+	if err := i.Conn().QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channels WHERE UserId = ?)", userId).Scan(&exists); err != nil {
 		return nil, fmt.Errorf("ошибка проверки существования каналов: %w", err)
 	}
 
@@ -137,7 +137,7 @@ func (d *DB) GetChannelsData(userId uint32) (json.RawMessage, error) {
 		avitoEn  sql.NullInt32
 	)
 
-	err := d.Conn().QueryRowContext(ctx, `
+	err := i.Conn().QueryRowContext(ctx, `
 		SELECT TgBot, TgBot_enabled, Widget, Widget_enabled,
 		       TgUserBot, TgUserBot_enabled, Whats, Whats_enabled,
 		       Avito, Avito_enabled
@@ -153,26 +153,26 @@ func (d *DB) GetChannelsData(userId uint32) (json.RawMessage, error) {
 	}
 
 	return json.Marshal(map[string]entry{
-		"tgbot":     {Data: d.decryptChannelField(userId, tgBot), Enabled: tgBotEn == 1},
-		"widget":    {Data: d.decryptChannelField(userId, widget), Enabled: widgetEn == 1},
-		"tguserbot": {Data: d.decryptChannelField(userId, tgUBot), Enabled: tgUBotEn == 1},
-		"whatsbot":  {Data: d.decryptChannelField(userId, whats), Enabled: whatsEn == 1},
-		"avito":     {Data: d.decryptChannelField(userId, avitoStr), Enabled: avitoEn.Valid && avitoEn.Int32 == 1},
+		"tgbot":     {Data: i.decryptChannelField(userId, tgBot), Enabled: tgBotEn == 1},
+		"widget":    {Data: i.decryptChannelField(userId, widget), Enabled: widgetEn == 1},
+		"tguserbot": {Data: i.decryptChannelField(userId, tgUBot), Enabled: tgUBotEn == 1},
+		"whatsbot":  {Data: i.decryptChannelField(userId, whats), Enabled: whatsEn == 1},
+		"avito":     {Data: i.decryptChannelField(userId, avitoStr), Enabled: avitoEn.Valid && avitoEn.Int32 == 1},
 	})
 }
 
-func (d *DB) DeleteChannelData(userId uint32, channelType string) error {
+func (i *Implementation) DeleteChannelData(userId uint32, channelType string) error {
 	// Проверяем входные значения
 	if userId == 0 || channelType == "" {
 		return fmt.Errorf("получены некорректные значения: userId или channelType пусты")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -227,16 +227,16 @@ func (d *DB) DeleteChannelData(userId uint32, channelType string) error {
 }
 
 // CheckActiveChannels возвращает true если у пользователя хотя бы один канал активен.
-func (d *DB) CheckActiveChannels(userId uint32) (bool, error) {
+func (i *Implementation) CheckActiveChannels(userId uint32) (bool, error) {
 	if userId == 0 {
 		return false, fmt.Errorf("получен некорректный userId")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var active bool
-	err := d.Conn().QueryRowContext(ctx, `
+	err := i.Conn().QueryRowContext(ctx, `
 		SELECT EXISTS(
 			SELECT 1 FROM channels
 			WHERE UserId = ?
@@ -261,16 +261,16 @@ func (d *DB) CheckActiveChannels(userId uint32) (bool, error) {
 }
 
 // GetActiveChannels возвращает список имён активных каналов пользователя.
-func (d *DB) GetActiveChannels(userId uint32) ([]string, error) {
+func (i *Implementation) GetActiveChannels(userId uint32) ([]string, error) {
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	var tg, wid, tgu, wa, inst, av sql.NullBool
-	err := d.Conn().QueryRowContext(ctx,
+	err := i.Conn().QueryRowContext(ctx,
 		`SELECT TgBot_enabled, Widget_enabled, TgUserBot_enabled, Whats_enabled, Insta_enabled, Avito_enabled
 		 FROM channels WHERE UserId = ? LIMIT 1`, userId).
 		Scan(&tg, &wid, &tgu, &wa, &inst, &av)

@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -9,15 +9,15 @@ import (
 )
 
 // ServiceList возвращает список типов сервисов, подключённых к пользователю.
-func (d *DB) ServiceList(userId uint32) ([]string, error) {
+func (i *Implementation) ServiceList(userId uint32) ([]string, error) {
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT ServiceType FROM service WHERE UserId = ? ORDER BY ServiceType", userId)
 	if err != nil {
 		switch {
@@ -46,15 +46,15 @@ func (d *DB) ServiceList(userId uint32) ([]string, error) {
 }
 
 // AddService добавляет тип сервиса пользователю (игнорирует дубликаты).
-func (d *DB) AddService(userId uint32, serviceType string) error {
+func (i *Implementation) AddService(userId uint32, serviceType string) error {
 	if userId == 0 || serviceType == "" {
 		return fmt.Errorf("получены некорректные значения")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx,
+	_, err := i.Conn().ExecContext(ctx,
 		"INSERT IGNORE INTO service (UserId, ServiceType) VALUES (?, ?)", userId, serviceType)
 	if err != nil {
 		switch {
@@ -70,15 +70,15 @@ func (d *DB) AddService(userId uint32, serviceType string) error {
 }
 
 // DeleteService удаляет тип сервиса у пользователя.
-func (d *DB) DeleteService(userId uint32, serviceType string) error {
+func (i *Implementation) DeleteService(userId uint32, serviceType string) error {
 	if userId == 0 || serviceType == "" {
 		return fmt.Errorf("получены некорректные значения")
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	_, err := d.Conn().ExecContext(ctx,
+	_, err := i.Conn().ExecContext(ctx,
 		"DELETE FROM service WHERE UserId = ? AND ServiceType = ?", userId, serviceType)
 	if err != nil {
 		switch {

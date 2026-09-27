@@ -1,7 +1,7 @@
 package app
 
 import (
-	db "air_orchestrator/internal/repository/mysql"
+	db "air_orchestrator/internal/db"
 	"context"
 	"fmt"
 

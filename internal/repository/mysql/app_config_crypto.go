@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"air_orchestrator/internal/domain/state"
@@ -50,7 +50,7 @@ type AppConfigRekeyResult struct {
 //
 // Метод полезен для мягкой миграции: старые открытые значения продолжают читаться,
 // а при наличии master key могут быть переведены в encrypted storage одной операцией.
-func (d *DB) EncryptAppConfigSensitiveValues() error {
+func (i *Implementation) EncryptAppConfigSensitiveValues() error {
 	masterKey, ok, err := loadCurrentAppMasterKey()
 	if err != nil {
 		return err
@@ -59,10 +59,10 @@ func (d *DB) EncryptAppConfigSensitiveValues() error {
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx, "SELECT `key`, `value` FROM app_config")
+	rows, err := i.Conn().QueryContext(ctx, "SELECT `key`, `value` FROM app_config")
 	if err != nil {
 		return fmt.Errorf("EncryptAppConfigSensitiveValues query: %w", err)
 	}
@@ -90,7 +90,7 @@ func (d *DB) EncryptAppConfigSensitiveValues() error {
 		return nil
 	}
 
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("EncryptAppConfigSensitiveValues begin tx: %w", err)
 	}
@@ -142,7 +142,7 @@ func ValidateAppConfigRekeyConfig() error {
 //   - при любой ошибке выполняется rollback всех изменений.
 //
 // Возвращает количество реально перекодированных чувствительных ключей и их имена.
-func (d *DB) RekeyAppConfigSensitiveValues() (*AppConfigRekeyResult, error) {
+func (i *Implementation) RekeyAppConfigSensitiveValues() (*AppConfigRekeyResult, error) {
 	if err := ValidateAppConfigRekeyConfig(); err != nil {
 		return nil, err
 	}
@@ -156,10 +156,10 @@ func (d *DB) RekeyAppConfigSensitiveValues() (*AppConfigRekeyResult, error) {
 	}
 	result := &AppConfigRekeyResult{DryRun: IsAppConfigRekeyDryRun()}
 
-	ctx, cancel := context.WithTimeout(d.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(i.Context(), 60*time.Second)
 	defer cancel()
 
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("RekeyAppConfigSensitiveValues begin tx: %w", err)
 	}
@@ -263,7 +263,7 @@ func (d *DB) RekeyAppConfigSensitiveValues() (*AppConfigRekeyResult, error) {
 	return result, nil
 }
 
-func (d *DB) prepareAppConfigValueForStorage(key, value string) (string, error) {
+func (i *Implementation) prepareAppConfigValueForStorage(key, value string) (string, error) {
 	if value == "" || !isSensitiveAppConfigKey(key) {
 		return value, nil
 	}
@@ -280,7 +280,7 @@ func (d *DB) prepareAppConfigValueForStorage(key, value string) (string, error) 
 	return encryptAppConfigValue(masterKey, value)
 }
 
-func (d *DB) decodeAppConfigValue(key, value string) (string, error) {
+func (i *Implementation) decodeAppConfigValue(key, value string) (string, error) {
 	if value == "" || !isEncryptedAppConfigValue(value) {
 		return value, nil
 	}

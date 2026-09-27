@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -11,14 +11,14 @@ import (
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-func (d *DB) GetUserDialogs(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetUserDialogs(userId uint32) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// SQL запрос напрямую
@@ -41,7 +41,7 @@ func (d *DB) GetUserDialogs(userId uint32) (json.RawMessage, error) {
 
 	// Выполняем запрос
 	var data sql.NullString
-	err := d.Conn().QueryRowContext(ctx, query, userId).Scan(&data)
+	err := i.Conn().QueryRowContext(ctx, query, userId).Scan(&data)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -63,19 +63,19 @@ func (d *DB) GetUserDialogs(userId uint32) (json.RawMessage, error) {
 	return json.RawMessage(data.String), nil
 }
 
-func (d *DB) GetDevUserData(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetDevUserData(userId uint32) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Сначала проверяем роль пользователя
 	var userRole int
-	err := d.Conn().QueryRowContext(ctx, "SELECT RoleId FROM users WHERE Id = ?", userId).Scan(&userRole)
+	err := i.Conn().QueryRowContext(ctx, "SELECT RoleId FROM users WHERE Id = ?", userId).Scan(&userRole)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -151,7 +151,7 @@ WHERE u.Id = ?`
 
 	// Выполняем запрос
 	var result []byte
-	err = d.Conn().QueryRowContext(ctx, query, userId).Scan(&result)
+	err = i.Conn().QueryRowContext(ctx, query, userId).Scan(&result)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -173,18 +173,18 @@ WHERE u.Id = ?`
 	return result, nil
 }
 
-func (d *DB) UpdateDevData(userId uint32, name, encEmail, emailHMAC, sha string) error {
+func (i *Implementation) UpdateDevData(userId uint32, name, encEmail, emailHMAC, sha string) error {
 	// Проверяем входное значение userId
 	if userId == 0 {
 		return fmt.Errorf("получен некорректный userId")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -249,7 +249,7 @@ func (d *DB) UpdateDevData(userId uint32, name, encEmail, emailHMAC, sha string)
 	return nil
 }
 
-func (d *DB) UpdateDevGPTModel(provider string, modId uint8) error {
+func (i *Implementation) UpdateDevGPTModel(provider string, modId uint8) error {
 	// Проверяем входные данные
 	if provider == "" {
 		return fmt.Errorf("получен пустой provider")
@@ -259,11 +259,11 @@ func (d *DB) UpdateDevGPTModel(provider string, modId uint8) error {
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}

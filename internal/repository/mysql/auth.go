@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"air_orchestrator/internal/domain/state"
@@ -12,14 +12,14 @@ import (
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-func (d *DB) CheckEmail(email, emailHMAC string) (uint32, error) {
+func (i *Implementation) CheckEmail(email, emailHMAC string) (uint32, error) {
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Ищем по plaintext Email (старые пользователи) ИЛИ по EmailHash (мигрированные/новые).
 	var result sql.NullInt32
-	err := d.Conn().QueryRowContext(ctx,
+	err := i.Conn().QueryRowContext(ctx,
 		"SELECT UserId FROM user_auth WHERE Email = ? OR EmailHash = ? LIMIT 1",
 		email, emailHMAC).Scan(&result)
 	if err != nil {
@@ -43,7 +43,7 @@ func (d *DB) CheckEmail(email, emailHMAC string) (uint32, error) {
 	return uint32(result.Int32), nil
 }
 
-func (d *DB) CreateUser(name, pass, encEmail, emailHMAC, lang string, demo bool) (uint32, error) {
+func (i *Implementation) CreateUser(name, pass, encEmail, emailHMAC, lang string, demo bool) (uint32, error) {
 	// Проверяю что нет пустых значений
 	if name == "" || pass == "" || encEmail == "" || emailHMAC == "" {
 		return 0, fmt.Errorf("получены пустые значения")
@@ -62,11 +62,11 @@ func (d *DB) CreateUser(name, pass, encEmail, emailHMAC, lang string, demo bool)
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -174,14 +174,14 @@ func (d *DB) CreateUser(name, pass, encEmail, emailHMAC, lang string, demo bool)
 	return uint32(newUserId), nil
 }
 
-func (d *DB) CheckAuth(pass, email string) (json.RawMessage, error) {
+func (i *Implementation) CheckAuth(pass, email string) (json.RawMessage, error) {
 	// Проверяем входные значения
 	if pass == "" || email == "" {
 		return nil, fmt.Errorf("получены пустые значения")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// SQL запрос для получения данных пользователя
@@ -199,7 +199,7 @@ func (d *DB) CheckAuth(pass, email string) (json.RawMessage, error) {
   LIMIT 1`
 
 	var result sql.NullString
-	err := d.Conn().QueryRowContext(ctx, query, pass, email).Scan(&result)
+	err := i.Conn().QueryRowContext(ctx, query, pass, email).Scan(&result)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -221,17 +221,17 @@ func (d *DB) CheckAuth(pass, email string) (json.RawMessage, error) {
 	return json.RawMessage(result.String), nil
 }
 
-func (d *DB) ConfirmMail(email, emailHMAC string) error {
+func (i *Implementation) ConfirmMail(email, emailHMAC string) error {
 	if email == "" && emailHMAC == "" {
 		return fmt.Errorf("получены пустые значения")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Поиск по Email (старые пользователи) или по EmailHash (новые/мигрированные)
-	result, err := d.Conn().ExecContext(ctx,
+	result, err := i.Conn().ExecContext(ctx,
 		"UPDATE user_auth SET Confirmed = 1 WHERE (Email = ? OR EmailHash = ?) AND Confirmed = 0",
 		email, emailHMAC)
 	if err != nil {
@@ -258,18 +258,18 @@ func (d *DB) ConfirmMail(email, emailHMAC string) error {
 	return nil
 }
 
-func (d *DB) UpdatePassword(email, emailHMAC string, newSHA string) error {
+func (i *Implementation) UpdatePassword(email, emailHMAC string, newSHA string) error {
 	// Проверяю что нет пустых значений
 	if (email == "" && emailHMAC == "") || newSHA == "" {
 		return fmt.Errorf("получены пустые значения")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Поиск по Email (старые пользователи) или по EmailHash (новые/мигрированные)
-	result, err := d.Conn().ExecContext(ctx,
+	result, err := i.Conn().ExecContext(ctx,
 		"UPDATE user_auth SET SHA = ? WHERE Email = ? OR EmailHash = ?",
 		newSHA, email, emailHMAC)
 	if err != nil {

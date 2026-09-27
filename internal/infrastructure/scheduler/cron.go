@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"air_orchestrator/internal/domain/repository"
+	"air_orchestrator/internal/repository"
 
 	"github.com/ikermy/air-common/pkg/com"
 	"github.com/ikermy/air-common/pkg/endpoint"

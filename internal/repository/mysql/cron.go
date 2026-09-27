@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 
 // GetUsersWithGoogleToken возвращает список userId всех пользователей,
 // у которых есть активная запись в google_oauth_tokens.
-func (d *DB) GetUsersWithGoogleToken() ([]uint32, error) {
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+func (i *Implementation) GetUsersWithGoogleToken() ([]uint32, error) {
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT user_id FROM google_oauth_tokens ORDER BY user_id")
 	if err != nil {
 		switch {
@@ -45,14 +45,14 @@ func (d *DB) GetUsersWithGoogleToken() ([]uint32, error) {
 }
 
 // GetMigratedUsersEmails возвращает зашифрованные email всех мигрированных пользователей.
-func (d *DB) GetMigratedUsersEmails() ([]struct {
+func (i *Implementation) GetMigratedUsersEmails() ([]struct {
 	UserId   uint32
 	EncEmail string
 }, error) {
-	ctx, cancel := context.WithTimeout(d.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 
-	rows, err := d.Conn().QueryContext(ctx,
+	rows, err := i.Conn().QueryContext(ctx,
 		"SELECT UserId, Email FROM user_auth WHERE EmailHash IS NOT NULL")
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения мигрированных пользователей: %w", err)
@@ -77,8 +77,8 @@ func (d *DB) GetMigratedUsersEmails() ([]struct {
 }
 
 // UsersWithoutSubscription находит пользователей у которых истекла
-func (d *DB) UsersWithoutSubscription() ([]uint32, error) {
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+func (i *Implementation) UsersWithoutSubscription() ([]uint32, error) {
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	query := `
@@ -89,7 +89,7 @@ JOIN subscriptions s
   ON u.Id = s.UserId AND s.Notified = FALSE AND s.EndDate < CURRENT_DATE()
 WHERE u.RoleId = 2 AND a.Disabled = 0;
 	`
-	rows, err := d.Conn().QueryContext(ctx, query)
+	rows, err := i.Conn().QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при поиске пользователей без подписки: %w", err)
 	}
@@ -110,12 +110,12 @@ WHERE u.RoleId = 2 AND a.Disabled = 0;
 	return userIds, nil
 }
 
-func (d *DB) SetUsersSubscriptionNotified(users []uint32) error {
+func (i *Implementation) SetUsersSubscriptionNotified(users []uint32) error {
 	if len(users) == 0 {
 		return nil // Нет пользователей для обновления
 	}
 
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Создаем строку с плейсхолдерами для IN (?, ?, ...)
@@ -130,7 +130,7 @@ func (d *DB) SetUsersSubscriptionNotified(users []uint32) error {
 		args[i] = v
 	}
 
-	_, err := d.Conn().ExecContext(ctx, query, args...)
+	_, err := i.Conn().ExecContext(ctx, query, args...)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
