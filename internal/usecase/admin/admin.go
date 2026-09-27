@@ -1,7 +1,7 @@
 package admin
 
 import (
-	"air_orchestrator/internal/domain/repository"
+	"air_orchestrator/internal/repository"
 	"context"
 	"fmt"
 )

@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"air_orchestrator/internal/infrastructure/storage"
@@ -13,7 +13,7 @@ import (
 	"github.com/ikermy/air-common/pkg/crypto"
 )
 
-func (d *DB) StorageConfig(ctx context.Context, userID uint32) (storage.BackendConfig, error) {
+func (i *Implementation) StorageConfig(ctx context.Context, userID uint32) (storage.BackendConfig, error) {
 	if userID == 0 {
 		return storage.BackendConfig{}, fmt.Errorf("invalid user ID")
 	}
@@ -22,7 +22,7 @@ func (d *DB) StorageConfig(ctx context.Context, userID uint32) (storage.BackendC
 	var typ, endpoint, bucket, region, access, secret sql.NullString
 	var sts sql.NullBool
 
-	err := d.Conn().QueryRowContext(ctx, `SELECT storage_type, endpoint, bucket, region, access_key_ciphertext, secret_key_ciphertext, external_sts_supported FROM user_storage_config WHERE user_id=?`, userID).Scan(&typ, &endpoint, &bucket, &region, &access, &secret, &sts)
+	err := i.Conn().QueryRowContext(ctx, `SELECT storage_type, endpoint, bucket, region, access_key_ciphertext, secret_key_ciphertext, external_sts_supported FROM user_storage_config WHERE user_id=?`, userID).Scan(&typ, &endpoint, &bucket, &region, &access, &secret, &sts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.BackendConfig{UserID: userID, Type: storage.BackendInternal}, nil
 	}
@@ -33,10 +33,10 @@ func (d *DB) StorageConfig(ctx context.Context, userID uint32) (storage.BackendC
 
 	cfg = storage.BackendConfig{UserID: userID, Type: storage.BackendType(typ.String), Endpoint: endpoint.String, Bucket: bucket.String, Region: region.String, AccessKeyCiphertext: access.String, SecretKeyCiphertext: secret.String, ExternalSTSSupported: sts.Bool}
 	if cfg.Type == storage.BackendExternal {
-		if d.MasterKeyResolver == nil {
+		if i.MasterKeyResolver == nil {
 			return storage.BackendConfig{}, fmt.Errorf("master key resolver is not configured")
 		}
-		mk, ok := d.MasterKeyResolver(userID)
+		mk, ok := i.MasterKeyResolver(userID)
 		if !ok {
 			return storage.BackendConfig{}, fmt.Errorf("storage credentials are locked")
 		}
@@ -54,7 +54,7 @@ func (d *DB) StorageConfig(ctx context.Context, userID uint32) (storage.BackendC
 	return cfg, nil
 }
 
-func (d *DB) SaveStorageConfig(ctx context.Context, cfg storage.BackendConfig) error {
+func (i *Implementation) SaveStorageConfig(ctx context.Context, cfg storage.BackendConfig) error {
 	if cfg.UserID == 0 || cfg.Type == "" {
 		return fmt.Errorf("invalid storage config")
 	}
@@ -68,8 +68,8 @@ func (d *DB) SaveStorageConfig(ctx context.Context, cfg storage.BackendConfig) e
 		// Шифруем credentials MasterKey'ом, если он доступен. При отсутствии
 		// resolver или ключа сохраняем значения открытыми, как остальные методы
 		// сохранения критичных данных в проекте.
-		if d.MasterKeyResolver != nil {
-			if mk, ok := d.MasterKeyResolver(cfg.UserID); ok {
+		if i.MasterKeyResolver != nil {
+			if mk, ok := i.MasterKeyResolver(cfg.UserID); ok {
 				var err error
 				cfg.AccessKeyCiphertext, err = encryptStorageCredential(mk, cfg.AccessKeyCiphertext)
 				if err != nil {
@@ -83,7 +83,7 @@ func (d *DB) SaveStorageConfig(ctx context.Context, cfg storage.BackendConfig) e
 		}
 	}
 
-	_, err := d.Conn().ExecContext(ctx, `INSERT INTO user_storage_config (user_id, storage_type, endpoint, bucket, region, access_key_ciphertext, secret_key_ciphertext, external_sts_supported) VALUES (?, ?, NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), ?) ON DUPLICATE KEY UPDATE storage_type=VALUES(storage_type), endpoint=VALUES(endpoint), bucket=VALUES(bucket), region=VALUES(region), access_key_ciphertext=VALUES(access_key_ciphertext), secret_key_ciphertext=VALUES(secret_key_ciphertext), external_sts_supported=VALUES(external_sts_supported)`, cfg.UserID, cfg.Type, cfg.Endpoint, cfg.Bucket, cfg.Region, cfg.AccessKeyCiphertext, cfg.SecretKeyCiphertext, cfg.ExternalSTSSupported)
+	_, err := i.Conn().ExecContext(ctx, `INSERT INTO user_storage_config (user_id, storage_type, endpoint, bucket, region, access_key_ciphertext, secret_key_ciphertext, external_sts_supported) VALUES (?, ?, NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), NULLIF(?,''), ?) ON DUPLICATE KEY UPDATE storage_type=VALUES(storage_type), endpoint=VALUES(endpoint), bucket=VALUES(bucket), region=VALUES(region), access_key_ciphertext=VALUES(access_key_ciphertext), secret_key_ciphertext=VALUES(secret_key_ciphertext), external_sts_supported=VALUES(external_sts_supported)`, cfg.UserID, cfg.Type, cfg.Endpoint, cfg.Bucket, cfg.Region, cfg.AccessKeyCiphertext, cfg.SecretKeyCiphertext, cfg.ExternalSTSSupported)
 
 	return err
 }
@@ -102,22 +102,22 @@ func decryptStorageCredential(masterKey [32]byte, value string) (string, error) 
 	return crypto.DecryptFieldWithMasterKey(masterKey, value)
 }
 
-func (d *DB) EnsureStorageQuota(ctx context.Context, userID uint32) error {
+func (i *Implementation) EnsureStorageQuota(ctx context.Context, userID uint32) error {
 	if userID == 0 {
 		return fmt.Errorf("invalid user ID")
 	}
 
-	_, err := d.Conn().ExecContext(ctx, `INSERT INTO user_storage_quota (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_id`, userID)
+	_, err := i.Conn().ExecContext(ctx, `INSERT INTO user_storage_quota (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_id`, userID)
 
 	return err
 }
 
-func (d *DB) ReserveStorage(ctx context.Context, userID uint32, size int64) error {
+func (i *Implementation) ReserveStorage(ctx context.Context, userID uint32, size int64) error {
 	if userID == 0 || size <= 0 {
 		return fmt.Errorf("invalid storage reservation")
 	}
 
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -142,12 +142,12 @@ func (d *DB) ReserveStorage(ctx context.Context, userID uint32, size int64) erro
 	return tx.Commit()
 }
 
-func (d *DB) CommitStorage(ctx context.Context, userID uint32, size int64) error {
+func (i *Implementation) CommitStorage(ctx context.Context, userID uint32, size int64) error {
 	if userID == 0 || size <= 0 {
 		return fmt.Errorf("invalid storage commit")
 	}
 
-	result, err := d.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET reserved_bytes=reserved_bytes-?, used_bytes=used_bytes+? WHERE user_id=? AND reserved_bytes>=?`, size, size, userID, size)
+	result, err := i.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET reserved_bytes=reserved_bytes-?, used_bytes=used_bytes+? WHERE user_id=? AND reserved_bytes>=?`, size, size, userID, size)
 	if err != nil {
 		return err
 	}
@@ -160,12 +160,12 @@ func (d *DB) CommitStorage(ctx context.Context, userID uint32, size int64) error
 	return nil
 }
 
-func (d *DB) ReleaseStorage(ctx context.Context, userID uint32, size int64) error {
+func (i *Implementation) ReleaseStorage(ctx context.Context, userID uint32, size int64) error {
 	if userID == 0 || size <= 0 {
 		return fmt.Errorf("invalid storage release")
 	}
 
-	result, err := d.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET reserved_bytes=reserved_bytes-? WHERE user_id=? AND reserved_bytes>=?`, size, userID, size)
+	result, err := i.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET reserved_bytes=reserved_bytes-? WHERE user_id=? AND reserved_bytes>=?`, size, userID, size)
 	if err != nil {
 		return err
 	}
@@ -178,26 +178,26 @@ func (d *DB) ReleaseStorage(ctx context.Context, userID uint32, size int64) erro
 	return nil
 }
 
-func (d *DB) ResetStorageQuota(ctx context.Context, userID uint32) error {
+func (i *Implementation) ResetStorageQuota(ctx context.Context, userID uint32) error {
 	if userID == 0 {
 		return fmt.Errorf("invalid storage quota reset")
 	}
-	_, err := d.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET used_bytes=0, reserved_bytes=0 WHERE user_id=?`, userID)
+	_, err := i.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET used_bytes=0, reserved_bytes=0 WHERE user_id=?`, userID)
 	return err
 }
 
-func (d *DB) StorageQuota(ctx context.Context, userID uint32) (quota, used, reserved uint64, err error) {
+func (i *Implementation) StorageQuota(ctx context.Context, userID uint32) (quota, used, reserved uint64, err error) {
 	if userID == 0 {
 		return 0, 0, 0, fmt.Errorf("invalid user ID")
 	}
 
-	err = d.Conn().QueryRowContext(ctx, `SELECT quota_bytes, used_bytes, reserved_bytes FROM user_storage_quota WHERE user_id=?`, userID).Scan(&quota, &used, &reserved)
+	err = i.Conn().QueryRowContext(ctx, `SELECT quota_bytes, used_bytes, reserved_bytes FROM user_storage_quota WHERE user_id=?`, userID).Scan(&quota, &used, &reserved)
 
 	return
 }
 
-func (d *DB) ListReservedUsers(ctx context.Context) ([]uint32, error) {
-	rows, err := d.Conn().QueryContext(ctx, `SELECT user_id FROM user_storage_quota WHERE reserved_bytes > 0`)
+func (i *Implementation) ListReservedUsers(ctx context.Context) ([]uint32, error) {
+	rows, err := i.Conn().QueryContext(ctx, `SELECT user_id FROM user_storage_quota WHERE reserved_bytes > 0`)
 	if err != nil {
 		return nil, err
 	}
@@ -217,15 +217,15 @@ func (d *DB) ListReservedUsers(ctx context.Context) ([]uint32, error) {
 
 // ReleaseAllReservedStorage clears only the reservation portion of quota after
 // Redis recovery. Committed usage is never changed.
-func (d *DB) ReleaseAllReservedStorage(ctx context.Context, userID uint32) error {
+func (i *Implementation) ReleaseAllReservedStorage(ctx context.Context, userID uint32) error {
 	if userID == 0 {
 		return fmt.Errorf("invalid user ID")
 	}
-	_, err := d.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET reserved_bytes=0 WHERE user_id=?`, userID)
+	_, err := i.Conn().ExecContext(ctx, `UPDATE user_storage_quota SET reserved_bytes=0 WHERE user_id=?`, userID)
 	return err
 }
 
-func (d *DB) CreateMigration(ctx context.Context, userID uint32, sourceType, targetType storage.BackendType) (storageusecase.MigrationRecord, error) {
+func (i *Implementation) CreateMigration(ctx context.Context, userID uint32, sourceType, targetType storage.BackendType) (storageusecase.MigrationRecord, error) {
 	if userID == 0 {
 		return storageusecase.MigrationRecord{}, fmt.Errorf("invalid user ID")
 	}
@@ -234,14 +234,14 @@ func (d *DB) CreateMigration(ctx context.Context, userID uint32, sourceType, tar
 	}
 
 	var active uint64
-	if err := d.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM storage_migrations WHERE user_id=? AND state IN ('pending','running')`, userID).Scan(&active); err != nil {
+	if err := i.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM storage_migrations WHERE user_id=? AND state IN ('pending','running')`, userID).Scan(&active); err != nil {
 		return storageusecase.MigrationRecord{}, err
 	}
 
 	if active > 0 {
 		return storageusecase.MigrationRecord{}, fmt.Errorf("migration already active for user")
 	}
-	result, err := d.Conn().ExecContext(ctx, `INSERT INTO storage_migrations (user_id, source_type, target_type, state, manifest) VALUES (?, ?, ?, 'pending', JSON_OBJECT())`, userID, sourceType, targetType)
+	result, err := i.Conn().ExecContext(ctx, `INSERT INTO storage_migrations (user_id, source_type, target_type, state, manifest) VALUES (?, ?, ?, 'pending', JSON_OBJECT())`, userID, sourceType, targetType)
 
 	if err != nil {
 		return storageusecase.MigrationRecord{}, err
@@ -255,13 +255,13 @@ func (d *DB) CreateMigration(ctx context.Context, userID uint32, sourceType, tar
 	return storageusecase.MigrationRecord{ID: uint64(id), UserID: userID, State: storageusecase.MigrationPending, UpdatedAt: time.Now()}, nil
 }
 
-func (d *DB) UpdateMigration(ctx context.Context, record storageusecase.MigrationRecord) error {
+func (i *Implementation) UpdateMigration(ctx context.Context, record storageusecase.MigrationRecord) error {
 	if record.ID == 0 {
 		return fmt.Errorf("invalid migration ID")
 	}
 
 	keys, _ := json.Marshal(record.VerifiedKeys)
-	_, err := d.Conn().ExecContext(ctx, `
+	_, err := i.Conn().ExecContext(ctx, `
     UPDATE storage_migrations
     SET state=?, last_error=?,
         manifest=JSON_SET(
@@ -286,12 +286,12 @@ func (d *DB) UpdateMigration(ctx context.Context, record storageusecase.Migratio
 	return err
 }
 
-func (d *DB) GetMigration(ctx context.Context, id uint64) (storageusecase.MigrationRecord, error) {
+func (i *Implementation) GetMigration(ctx context.Context, id uint64) (storageusecase.MigrationRecord, error) {
 	var r storageusecase.MigrationRecord
 	var keysJSON sql.NullString
 	var state, last sql.NullString
 
-	err := d.Conn().QueryRowContext(ctx, `SELECT id, user_id, state, JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.copied')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.verified')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.deleted')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.total')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.verified_keys')), last_error, updated_at FROM storage_migrations WHERE id=?`, id).Scan(&r.ID, &r.UserID, &state, &r.Copied, &r.Verified, &r.Deleted, &r.Total, &keysJSON, &last, &r.UpdatedAt)
+	err := i.Conn().QueryRowContext(ctx, `SELECT id, user_id, state, JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.copied')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.verified')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.deleted')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.total')), JSON_UNQUOTE(JSON_EXTRACT(manifest,'$.verified_keys')), last_error, updated_at FROM storage_migrations WHERE id=?`, id).Scan(&r.ID, &r.UserID, &state, &r.Copied, &r.Verified, &r.Deleted, &r.Total, &keysJSON, &last, &r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
@@ -307,8 +307,8 @@ func (d *DB) GetMigration(ctx context.Context, id uint64) (storageusecase.Migrat
 	return r, nil
 }
 
-func (d *DB) CancelMigration(ctx context.Context, id uint64) error {
-	result, err := d.Conn().ExecContext(ctx, `UPDATE storage_migrations SET state='cancelled' WHERE id=? AND state IN ('pending','failed')`, id)
+func (i *Implementation) CancelMigration(ctx context.Context, id uint64) error {
+	result, err := i.Conn().ExecContext(ctx, `UPDATE storage_migrations SET state='cancelled' WHERE id=? AND state IN ('pending','failed')`, id)
 	if err != nil {
 		return err
 	}
@@ -321,12 +321,12 @@ func (d *DB) CancelMigration(ctx context.Context, id uint64) error {
 	return nil
 }
 
-func (d *DB) ListPendingMigrations(ctx context.Context, limit int) ([]storageusecase.MigrationRecord, error) {
+func (i *Implementation) ListPendingMigrations(ctx context.Context, limit int) ([]storageusecase.MigrationRecord, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 10
 	}
 
-	rows, err := d.Conn().QueryContext(ctx, `SELECT id, user_id, state, updated_at FROM storage_migrations WHERE state IN ('pending','failed') ORDER BY updated_at LIMIT ?`, limit)
+	rows, err := i.Conn().QueryContext(ctx, `SELECT id, user_id, state, updated_at FROM storage_migrations WHERE state IN ('pending','failed') ORDER BY updated_at LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}

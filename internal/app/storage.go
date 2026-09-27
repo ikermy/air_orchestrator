@@ -1,11 +1,11 @@
 package app
 
 import (
+	db "air_orchestrator/internal/db"
 	web "air_orchestrator/internal/delivery/http"
 	"air_orchestrator/internal/infrastructure/redis"
 	exam "air_orchestrator/internal/infrastructure/security"
 	"air_orchestrator/internal/infrastructure/storage"
-	db "air_orchestrator/internal/repository/mysql"
 	storageusecase "air_orchestrator/internal/usecase/storage"
 	"context"
 	"fmt"

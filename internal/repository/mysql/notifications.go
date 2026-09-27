@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-func (d *DB) UpdateNotification(userId uint32, tip string, status bool, telegaId uint64) error {
+func (i *Implementation) UpdateNotification(userId uint32, tip string, status bool, telegaId uint64) error {
 	// Проверяем входные значения
 	if userId == 0 || tip == "" {
 		return fmt.Errorf("получены некорректные значения: userId или tip пусты")
@@ -22,11 +22,11 @@ func (d *DB) UpdateNotification(userId uint32, tip string, status bool, telegaId
 	tip = strings.ToLower(tip)
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -103,19 +103,19 @@ func (d *DB) UpdateNotification(userId uint32, tip string, status bool, telegaId
 	return nil
 }
 
-func (d *DB) GetNotificationsData(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetNotificationsData(userId uint32) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Получаем email пользователя
 	var userEmail sql.NullString
-	err := d.Conn().QueryRowContext(ctx, "SELECT Email FROM user_auth WHERE UserId = ? LIMIT 1", userId).Scan(&userEmail)
+	err := i.Conn().QueryRowContext(ctx, "SELECT Email FROM user_auth WHERE UserId = ? LIMIT 1", userId).Scan(&userEmail)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -129,7 +129,7 @@ func (d *DB) GetNotificationsData(userId uint32) (json.RawMessage, error) {
 
 	// Проверяем существование записи в notifications
 	var found bool
-	err = d.Conn().QueryRowContext(ctx, "SELECT COUNT(*) > 0 FROM notifications WHERE UserId = ?", userId).Scan(&found)
+	err = i.Conn().QueryRowContext(ctx, "SELECT COUNT(*) > 0 FROM notifications WHERE UserId = ?", userId).Scan(&found)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
@@ -167,7 +167,7 @@ func (d *DB) GetNotificationsData(userId uint32) (json.RawMessage, error) {
    FROM notifications
    WHERE UserId = ?`
 
-		err = d.Conn().QueryRowContext(ctx, query, userEmail.String, userId).Scan(&result)
+		err = i.Conn().QueryRowContext(ctx, query, userEmail.String, userId).Scan(&result)
 	} else {
 		// Возвращаем структуру по умолчанию
 		query := `
@@ -190,7 +190,7 @@ func (d *DB) GetNotificationsData(userId uint32) (json.RawMessage, error) {
     )
    )`
 
-		err = d.Conn().QueryRowContext(ctx, query, userEmail.String).Scan(&result)
+		err = i.Conn().QueryRowContext(ctx, query, userEmail.String).Scan(&result)
 	}
 
 	if err != nil {
@@ -213,18 +213,18 @@ func (d *DB) GetNotificationsData(userId uint32) (json.RawMessage, error) {
 	return result, nil
 }
 
-func (d *DB) SaveNotificationEvent(userId uint32, start, end, target bool) error {
+func (i *Implementation) SaveNotificationEvent(userId uint32, start, end, target bool) error {
 	// Проверяем входное значение
 	if userId == 0 {
 		return fmt.Errorf("получен некорректный userId")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
@@ -275,7 +275,7 @@ func (d *DB) SaveNotificationEvent(userId uint32, start, end, target bool) error
 	return nil
 }
 
-func (d *DB) DeleteNotificationsChannel(userId uint32, chanelName string) error {
+func (i *Implementation) DeleteNotificationsChannel(userId uint32, chanelName string) error {
 	// Проверяем входные значения
 	if userId == 0 || chanelName == "" {
 		return fmt.Errorf("получены некорректные значения: userId или chanelName пусты")
@@ -285,11 +285,11 @@ func (d *DB) DeleteNotificationsChannel(userId uint32, chanelName string) error 
 	chanelName = strings.ToLower(chanelName)
 
 	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
 	// Начинаем транзакцию для атомарности операций
-	tx, err := d.Conn().BeginTx(ctx, nil)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}

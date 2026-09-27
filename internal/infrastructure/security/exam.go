@@ -2,8 +2,8 @@ package exam
 
 import (
 	"air_orchestrator/internal/config"
-	"air_orchestrator/internal/domain/repository"
 	"air_orchestrator/internal/domain/state"
+	"air_orchestrator/internal/repository"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
