@@ -1,7 +1,6 @@
 package db
 
 import (
-	"air_orchestrator/internal/domain/state"
 	"context"
 	"sync"
 
@@ -15,6 +14,10 @@ type DB struct {
 	*comdb.DB
 	migrationDone bool
 	migrationMu   sync.Mutex
+
+	done   sync.Once     // На всякий случай однократное закрытие канала
+	DoneCh chan struct{} // Канал уведомления о завершении операций пользователями ДБ
+	Exit   chan struct{} // Канал завершения работы приложения
 }
 
 func (d *DB) CheckUserSubscription(provider com.SubscriptionProvider, userID uint32) error {
@@ -27,7 +30,9 @@ func New(parent context.Context) (*DB, error) {
 		return nil, err
 	}
 	return &DB{
-		DB: db,
+		DB:     db,
+		DoneCh: make(chan struct{}),
+		Exit:   make(chan struct{}),
 	}, nil
 }
 
@@ -38,14 +43,23 @@ func (d *DB) HandlerClose() {
 		logger.Info("DB: контекст отменен, ожидаю завершения всех операций...")
 
 		// Ожидаем сигнал о завершении от компонентов работающих с ДБ
-		<-state.UsersDB
+		<-d.DoneCh
 		logger.Info("DB: все модули работающие с БД завершили работу, продолжаю остановку...")
 
 		if err := d.Close(); err != nil {
 			logger.Error("DB: ошибка при закрытии: %v", err)
 		}
 
-		// Безопасно закрываем канал Exit (защита от panic при множественном close)
-		state.CloseExit()
+		close(d.Exit)
 	}()
+}
+
+func (d *DB) CloseDoneCh() {
+	d.done.Do(func() {
+		close(d.DoneCh)
+	})
+}
+
+func (d *DB) GetExitCh() <-chan struct{} {
+	return d.Exit
 }

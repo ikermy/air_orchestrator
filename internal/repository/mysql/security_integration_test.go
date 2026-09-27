@@ -27,16 +27,19 @@ func initDBAndExamForSecurityIntegrationTest(t *testing.T) (*DB, *exam.Exam, con
 	logger.StdOut().WithLogLevel(logger.DEBUG).Apply()
 
 	// ── Redis ───────────────────────────────────────────────────────────────────
-	state.RedisAddr = os.Getenv("REDIS_ADDR")
-	state.RedisPassword = os.Getenv("REDIS_PASSWORD")
+	redisCfg := state.Redis{
+		RedisAddr:     os.Getenv("REDIS_ADDR"),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+		RedisDB:       0,
+	}
 	dbStr := os.Getenv("REDIS_DB")
 	if dbStr != "" {
 		if n, err := strconv.Atoi(dbStr); err == nil {
-			state.RedisDB = n
+			redisCfg.RedisDB = n
 		}
 	}
-	if state.RedisAddr != "" {
-		logger.Info("Redis: адрес=%s, db=%d", state.RedisAddr, state.RedisDB)
+	if redisCfg.RedisAddr != "" {
+		logger.Info("Redis: адрес=%s, db=%d", redisCfg.RedisAddr, redisCfg.RedisDB)
 	} else {
 		logger.Info("Redis: не настроен (REDIS_ADDR пуст)")
 	}
@@ -60,13 +63,13 @@ func initDBAndExamForSecurityIntegrationTest(t *testing.T) (*DB, *exam.Exam, con
 		t.Fatalf("ошибка инициализации session key: %v", err)
 	}
 
-	if state.RedisAddr == "" {
+	if redisCfg.RedisAddr == "" {
 		_ = d.Close()
 		cancel()
-		t.Fatalf("redis не настроен: state.RedisAddr пустой")
+		t.Fatalf("redis не настроен: redisCfg.RedisAddr пустой")
 	}
 
-	redisCli, err := rediscache.New(ctx, state.RedisAddr, state.RedisPassword, state.RedisDB)
+	redisCli, err := rediscache.New(ctx, redisCfg.RedisAddr, redisCfg.RedisPassword, redisCfg.RedisDB)
 	if err != nil {
 		_ = d.Close()
 		cancel()

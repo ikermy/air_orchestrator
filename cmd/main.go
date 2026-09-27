@@ -76,18 +76,21 @@ func main() {
 	}
 
 	// ── Redis ───────────────────────────────────────────────────────────────────
-	state.RedisAddr = os.Getenv("REDIS_ADDR")
-	state.RedisPassword = os.Getenv("REDIS_PASSWORD")
+	redisCfg := state.Redis{
+		RedisAddr:     os.Getenv("REDIS_ADDR"),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+		RedisDB:       0,
+	}
 	dbStr := os.Getenv("REDIS_DB")
 	if dbStr != "" {
-		if n, err := strconv.Atoi(dbStr); err == nil {
-			state.RedisDB = n
+		if rdb, err := strconv.Atoi(dbStr); err == nil {
+			redisCfg.RedisDB = rdb
 		}
 	}
-	if state.RedisAddr != "" {
-		logger.Info("Redis: адрес=%s, db=%d", state.RedisAddr, state.RedisDB)
+	if redisCfg.RedisAddr != "" {
+		logger.Info("Redis: адрес=%s, db=%d", redisCfg.RedisAddr, redisCfg.RedisDB)
 	} else {
-		logger.Warn("Redis: не настроен (REDIS_ADDR пуст)")
+		logger.Info("Redis: не настроен (REDIS_ADDR пуст)")
 	}
 
 	// Инициализация профилировщика
@@ -126,11 +129,11 @@ func main() {
 		}
 	}
 
-	a := app.New(ctx, prof)
+	a := app.New(ctx, prof, redisCfg)
 	a.Run()
 
 	// Ожидание завершения работы
-	<-state.Exit
+	<-a.ExitCh()
 
 	// Корректное завершение профилировщика
 	if prof != nil {

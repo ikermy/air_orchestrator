@@ -76,7 +76,7 @@ func (a *App) Run() {
 		go func() {
 			ticker := time.NewTicker(5 * time.Second)
 			<-ticker.C
-			close(state.UsersDB)
+			a.db.CloseDoneCh() // Закрываем канал DoneCh принудительно, больше никто не работает с БД
 		}()
 
 		logger.Info("App: получен сигнал завершения, начинаю shutdown")
@@ -100,11 +100,11 @@ func (a *App) Run() {
 		logger.Info("App: все модули завершены, закрываю соединение с БД")
 
 		bus.WaitAndClose()
-		close(state.UsersDB)
+		a.db.CloseDoneCh()
 	}()
 }
 
-func New(parent context.Context, prof *profiler.Profiler) *App {
+func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) *App {
 	// Локальный дочерний контекст для уровня app
 	ctx, cancel := context.WithCancel(parent)
 
@@ -131,15 +131,15 @@ func New(parent context.Context, prof *profiler.Profiler) *App {
 
 	// ── Redis (опционально) ─────────────────────────────────────────────────
 	var redisCli *redis.Client
-	if state.RedisAddr != "" && len(state.MasterKey) > 0 {
+	if redisCfg.RedisAddr != "" && len(state.MasterKey) > 0 {
 		var redisErr error
-		redisCli, redisErr = redis.New(ctx, state.RedisAddr, state.RedisPassword, state.RedisDB)
+		redisCli, redisErr = redis.New(ctx, redisCfg.RedisAddr, redisCfg.RedisPassword, redisCfg.RedisDB)
 		if redisErr != nil {
 			logger.Warn("Redis: не удалось подключиться: %v — работа без Redis", redisErr)
 			redisCli = nil
 		} else {
 			x.SetRedisClient(redisCli)
-			logger.Info("Redis: подключён, адрес=%s", state.RedisAddr)
+			logger.Info("Redis: подключён, адрес=%s", redisCfg.RedisAddr)
 
 			// Загружаем все MasterKey из Redis в masterKeyCache
 			if loadErr := x.LoadAllMasterKeysFromRedis(ctx); loadErr != nil {
@@ -248,6 +248,11 @@ func New(parent context.Context, prof *profiler.Profiler) *App {
 		grpc:     g,
 		prcProxy: callsProxy,
 	}
+}
+
+// ExitCh возвращает канал, который закрывается при завершении работы приложения.
+func (a *App) ExitCh() <-chan struct{} {
+	return a.db.GetExitCh()
 }
 
 // storageEventSender адаптирует endpoint.Endpoint под web.EventSender.
