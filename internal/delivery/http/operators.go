@@ -105,6 +105,14 @@ func (w *Web) SaveOperators(c *gin.Context) {
 		}
 	}
 
+	// Проверяем входные значения
+
+	if len(cleanData) == 0 || !json.Valid(cleanData) {
+		logger.Error("Некорректные данные JSON для операторов: %s", string(cleanData), userId)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+		return
+	}
+
 	// Сохраняю список операторов
 	if err := w.db.SaveOperators(w.ctx, userId, "Telegram", cleanData); err != nil {
 		logger.Error("'SaveOperators' Ошибка при сохранении в БД: %v", err)

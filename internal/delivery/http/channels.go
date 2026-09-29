@@ -42,6 +42,11 @@ func (w *Web) SaveChannel(c *gin.Context) {
 		return
 	}
 
+	if requestData.Type == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "получены некорректные данные"})
+		return
+	}
+
 	err := w.db.SaveChannelData(userId, requestData.Type, requestData.Data, requestData.Enabled)
 	if err != nil {
 		logger.Error("'SaveChannel' Ошибка при сохранении данных канала: %v", err, userId)
@@ -111,6 +116,12 @@ func (w *Web) DeleteChannel(c *gin.Context) {
 	if err := c.ShouldBindJSON(&requestData); err != nil {
 		logger.Error("'DeleteChannel' Ошибка парсинга JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Проверяем входные значения
+	if requestData.Type == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "получены некорректные данные"})
 		return
 	}
 
@@ -359,6 +370,11 @@ func (w *Web) RestartChannels(c *gin.Context) {
 		return
 	}
 	userId := uid.(uint32)
+
+	if userId == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid userId"})
+		return
+	}
 
 	conn, err := upgradeWebSocket(c)
 	if err != nil {

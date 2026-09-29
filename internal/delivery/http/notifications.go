@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikermy/air-common/pkg/com"
@@ -87,6 +88,16 @@ func (w *Web) SaveNotifications(c *gin.Context) {
 		}
 		telegaId = parsedId
 	}
+
+	// Проверяем входные значения
+	if requestData.Type == "" {
+		logger.Error("'save-notifications' Получены некорректные значения: userId или tip пусты")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "получены некорректные значения: userId или tip пусты"})
+		return
+	}
+
+	// Приводим название типа к нижнему регистру для унификации
+	requestData.Type = strings.ToLower(requestData.Type)
 
 	err := w.db.UpdateNotification(userId, requestData.Type, requestData.Enabled, telegaId)
 	if err != nil {
@@ -279,6 +290,16 @@ func (w *Web) DeleteNotificationsChannel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Проверяем входные значения
+	if requestData.Chan == "" {
+		logger.Error("'DeleteNotificationsChannel' Некорректные значения: userId или chanelName пусты")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректные значения: userId или chanelName пусты"})
+		return
+	}
+
+	// Приводим название канала к нижнему регистру для унификации
+	requestData.Chan = strings.ToLower(requestData.Chan)
 
 	err := w.db.DeleteNotificationsChannel(userId, requestData.Chan)
 	if err != nil {

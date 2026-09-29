@@ -14,10 +14,6 @@ import (
 
 // SaveChannelData переопределяет repository.go:SaveChannelData с поддержкой $mk$.
 func (i *Implementation) SaveChannelData(userId uint32, channelType string, data string, enabled bool) error {
-	if userId == 0 || channelType == "" {
-		return fmt.Errorf("получены некорректные значения: userId или channelType пусты")
-	}
-
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -95,10 +91,6 @@ func (i *Implementation) SaveChannelData(userId uint32, channelType string, data
 
 // GetChannelsData переопределяет repository.go:GetChannelsData с поддержкой $mk$-расшифровки.
 func (i *Implementation) GetChannelsData(userId uint32) (json.RawMessage, error) {
-	if userId == 0 {
-		return nil, fmt.Errorf("получен некорректный userId")
-	}
-
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -162,11 +154,6 @@ func (i *Implementation) GetChannelsData(userId uint32) (json.RawMessage, error)
 }
 
 func (i *Implementation) DeleteChannelData(userId uint32, channelType string) error {
-	// Проверяем входные значения
-	if userId == 0 || channelType == "" {
-		return fmt.Errorf("получены некорректные значения: userId или channelType пусты")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -228,10 +215,6 @@ func (i *Implementation) DeleteChannelData(userId uint32, channelType string) er
 
 // CheckActiveChannels возвращает true если у пользователя хотя бы один канал активен.
 func (i *Implementation) CheckActiveChannels(userId uint32) (bool, error) {
-	if userId == 0 {
-		return false, fmt.Errorf("получен некорректный userId")
-	}
-
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -262,10 +245,6 @@ func (i *Implementation) CheckActiveChannels(userId uint32) (bool, error) {
 
 // GetActiveChannels возвращает список имён активных каналов пользователя.
 func (i *Implementation) GetActiveChannels(userId uint32) ([]string, error) {
-	if userId == 0 {
-		return nil, fmt.Errorf("получен некорректный userId")
-	}
-
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 

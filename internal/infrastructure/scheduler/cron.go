@@ -270,6 +270,11 @@ func (s *Scheduler) checkUserSubscription(ctx context.Context) {
 		}(user)
 	}
 
+	if len(users) == 0 {
+		logger.Error("checkUserSubscription: нет пользователей без подписки для обновления статуса уведомления")
+		return // Нет пользователей для обновления
+	}
+
 	if err := s.store.SetUsersSubscriptionNotified(users); err != nil {
 		logger.Error("checkUserSubscription: ошибка обновления статуса уведомления для пользователей: %v", err)
 	}
