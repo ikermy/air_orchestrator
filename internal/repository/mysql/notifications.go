@@ -6,21 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ikermy/air-common/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 func (i *Implementation) UpdateNotification(userId uint32, tip string, status bool, telegaId uint64) error {
-	// Проверяем входные значения
-	if userId == 0 || tip == "" {
-		return fmt.Errorf("получены некорректные значения: userId или tip пусты")
-	}
-
-	// Приводим название типа к нижнему регистру для унификации
-	tip = strings.ToLower(tip)
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -104,11 +95,6 @@ func (i *Implementation) UpdateNotification(userId uint32, tip string, status bo
 }
 
 func (i *Implementation) GetNotificationsData(userId uint32) (json.RawMessage, error) {
-	// Проверяем входное значение
-	if userId == 0 {
-		return nil, fmt.Errorf("получен некорректный userId")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -214,11 +200,6 @@ func (i *Implementation) GetNotificationsData(userId uint32) (json.RawMessage, e
 }
 
 func (i *Implementation) SaveNotificationEvent(userId uint32, start, end, target bool) error {
-	// Проверяем входное значение
-	if userId == 0 {
-		return fmt.Errorf("получен некорректный userId")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -276,14 +257,6 @@ func (i *Implementation) SaveNotificationEvent(userId uint32, start, end, target
 }
 
 func (i *Implementation) DeleteNotificationsChannel(userId uint32, chanelName string) error {
-	// Проверяем входные значения
-	if userId == 0 || chanelName == "" {
-		return fmt.Errorf("получены некорректные значения: userId или chanelName пусты")
-	}
-
-	// Приводим название канала к нижнему регистру для унификации
-	chanelName = strings.ToLower(chanelName)
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()

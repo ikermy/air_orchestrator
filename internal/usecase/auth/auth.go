@@ -4,6 +4,7 @@ package auth
 
 import (
 	"air_orchestrator/internal/domain/service"
+	"air_orchestrator/internal/domain/state"
 	"air_orchestrator/internal/repository"
 	"context"
 	"fmt"
@@ -72,6 +73,18 @@ func (uc *AuthUseCase) Register(input RegisterInput) (*RegisterResult, error) {
 	}
 
 	emailHMAC := uc.exam.EmailHMAC(input.Mail)
+
+	// Проверяю что нет пустых значений
+	if input.Name == "" || input.Password == "" || encEmail == "" || emailHMAC == "" {
+		return nil, fmt.Errorf("получены пустые значения")
+	}
+
+	// Проверяю что lang валидный
+	ok := state.ValidateLanguage(input.Language)
+	if !ok {
+		input.Language = "en"
+	}
+
 	userID, err := uc.store.CreateUser(input.Name, hashedPass, encEmail, emailHMAC, input.Language, input.Demo)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания пользователя: %w", err)
@@ -202,6 +215,12 @@ func (uc *AuthUseCase) ResetPassword(userID uint32, input ResetPasswordInput) er
 	}
 
 	emailHMAC := uc.exam.EmailHMAC(input.Mail)
+
+	// Проверяю что нет пустых значений
+	if (input.Mail == "" && emailHMAC == "") || hashedPass == "" {
+		return fmt.Errorf("получены пустые значения")
+	}
+
 	if err := uc.store.UpdatePassword(input.Mail, emailHMAC, hashedPass); err != nil {
 		return fmt.Errorf("ошибка обновления пароля: %w", err)
 	}
@@ -246,6 +265,11 @@ func (uc *AuthUseCase) ConfirmEmail(tokenString string) (userID uint32, email st
 		return 0, "", fmt.Errorf("недействительный токен: %w", err)
 	}
 	emailHMAC := uc.exam.EmailHMAC(email)
+
+	if email == "" && emailHMAC == "" {
+		return 0, "", fmt.Errorf("получены пустые значения")
+	}
+
 	if err = uc.store.ConfirmMail(email, emailHMAC); err != nil {
 		return 0, "", fmt.Errorf("ошибка подтверждения email: %w", err)
 	}

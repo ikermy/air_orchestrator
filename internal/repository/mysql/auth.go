@@ -4,7 +4,6 @@ import (
 	"air_orchestrator/internal/domain/state"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -44,17 +43,6 @@ func (i *Implementation) CheckEmail(email, emailHMAC string) (uint32, error) {
 }
 
 func (i *Implementation) CreateUser(name, pass, encEmail, emailHMAC, lang string, demo bool) (uint32, error) {
-	// Проверяю что нет пустых значений
-	if name == "" || pass == "" || encEmail == "" || emailHMAC == "" {
-		return 0, fmt.Errorf("получены пустые значения")
-	}
-
-	// Проверяю что lang валидный
-	ok := state.ValidateLanguage(lang)
-	if !ok {
-		lang = "en"
-	}
-
 	// Если пользователь выбрал демо доступ
 	role := 2
 	if demo {
@@ -174,58 +162,54 @@ func (i *Implementation) CreateUser(name, pass, encEmail, emailHMAC, lang string
 	return uint32(newUserId), nil
 }
 
-func (i *Implementation) CheckAuth(pass, email string) (json.RawMessage, error) {
-	// Проверяем входные значения
-	if pass == "" || email == "" {
-		return nil, fmt.Errorf("получены пустые значения")
-	}
-
-	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
-	defer cancel()
-
-	// SQL запрос для получения данных пользователя
-	query := `
-  SELECT JSON_OBJECT(
-   'Id', u.Id,
-   'Confirmed', ua.Confirmed,
-   'Disabled', ua.Disabled
-  )
-  FROM users u
-  JOIN user_auth ua ON ua.UserId = u.Id
-  JOIN user_roles ur ON u.RoleId = ur.Id
-  LEFT JOIN currency c ON u.currency = c.Id
-  WHERE ua.SHA = ? AND ua.Email = ?
-  LIMIT 1`
-
-	var result sql.NullString
-	err := i.Conn().QueryRowContext(ctx, query, pass, email).Scan(&result)
-	if err != nil {
-		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			return nil, fmt.Errorf("тайм-аут (%d с) при проверке авторизации: %w", mode.GetSQLTimeToCancel(), err)
-		case errors.Is(err, context.Canceled):
-			return nil, fmt.Errorf("операция отменена: %w", err)
-		case errors.Is(err, sql.ErrNoRows):
-			return nil, nil
-		default:
-			return nil, fmt.Errorf("ошибка проверки авторизации: %w", err)
-		}
-	}
-
-	// Проверяем корректность результата
-	if !result.Valid || result.String == "" {
-		return nil, nil
-	}
-
-	return json.RawMessage(result.String), nil
-}
+//func (i *Implementation) CheckAuth(pass, email string) (json.RawMessage, error) {
+//	// Проверяем входные значения
+//	if pass == "" || email == "" {
+//		return nil, fmt.Errorf("получены пустые значения")
+//	}
+//
+//	// Дочерний контекст с тайм-аутом на операцию
+//	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
+//	defer cancel()
+//
+//	// SQL запрос для получения данных пользователя
+//	query := `
+//  SELECT JSON_OBJECT(
+//   'Id', u.Id,
+//   'Confirmed', ua.Confirmed,
+//   'Disabled', ua.Disabled
+//  )
+//  FROM users u
+//  JOIN user_auth ua ON ua.UserId = u.Id
+//  JOIN user_roles ur ON u.RoleId = ur.Id
+//  LEFT JOIN currency c ON u.currency = c.Id
+//  WHERE ua.SHA = ? AND ua.Email = ?
+//  LIMIT 1`
+//
+//	var result sql.NullString
+//	err := i.Conn().QueryRowContext(ctx, query, pass, email).Scan(&result)
+//	if err != nil {
+//		switch {
+//		case errors.Is(err, context.DeadlineExceeded):
+//			return nil, fmt.Errorf("тайм-аут (%d с) при проверке авторизации: %w", mode.GetSQLTimeToCancel(), err)
+//		case errors.Is(err, context.Canceled):
+//			return nil, fmt.Errorf("операция отменена: %w", err)
+//		case errors.Is(err, sql.ErrNoRows):
+//			return nil, nil
+//		default:
+//			return nil, fmt.Errorf("ошибка проверки авторизации: %w", err)
+//		}
+//	}
+//
+//	// Проверяем корректность результата
+//	if !result.Valid || result.String == "" {
+//		return nil, nil
+//	}
+//
+//	return json.RawMessage(result.String), nil
+//}
 
 func (i *Implementation) ConfirmMail(email, emailHMAC string) error {
-	if email == "" && emailHMAC == "" {
-		return fmt.Errorf("получены пустые значения")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -259,11 +243,6 @@ func (i *Implementation) ConfirmMail(email, emailHMAC string) error {
 }
 
 func (i *Implementation) UpdatePassword(email, emailHMAC string, newSHA string) error {
-	// Проверяю что нет пустых значений
-	if (email == "" && emailHMAC == "") || newSHA == "" {
-		return fmt.Errorf("получены пустые значения")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()

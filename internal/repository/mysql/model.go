@@ -14,10 +14,6 @@ import (
 )
 
 func (i *Implementation) FastCheckActiveUserModel(userID uint32) (bool, error) {
-	if userID == 0 {
-		return false, fmt.Errorf("неверный userID")
-	}
-
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -44,10 +40,12 @@ func (i *Implementation) FastCheckActiveUserModel(userID uint32) (bool, error) {
 	return hay, nil
 }
 
+// Deprecated: используйте DeleteUserFile вместо этого.
+// DeleteFileFromUserGPT удаляет файл пользователя по ID.
 func (i *Implementation) DeleteFileFromUserGPT(userId uint32, fileID string) error {
 	// Проверяем входные значения
-	if userId == 0 || fileID == "" {
-		return fmt.Errorf("получены некорректные значения: userId или fileID пусты")
+	if fileID == "" {
+		return fmt.Errorf("получены некорректное значение: fileID пуст")
 	}
 
 	// Дочерний контекст с тайм-аутом на операцию
@@ -158,11 +156,6 @@ func (i *Implementation) DeleteFileFromUserGPT(userId uint32, fileID string) err
 }
 
 func (i *Implementation) AddFileFromUserGPT(userId uint32, fileID, fileName string) error {
-	// Проверяем входные значения
-	if userId == 0 || fileID == "" || fileName == "" {
-		return fmt.Errorf("получены некорректные значения: userId, fileID или fileName пусты")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()

@@ -581,17 +581,17 @@ func (w *Web) FileDelete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
+	// Фактически OpenAI уже не поддерживает этот режим работы
 	// Для OpenAI дополнительно удаляем из старого формата БД
 	// Для Mistral удаление из БД уже выполнено в DeleteDocumentFromLibrary
-	if provider == comdom.ProviderOpenAI {
-		err = w.db.DeleteFileFromUserGPT(userId, requestData.FileID)
-		if err != nil {
-			logger.Error("'FileDelete' Ошибка при удалении файла из БД: %v", err, userId)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-	}
+	//if provider == comdom.ProviderOpenAI {
+	//	err = w.db.DeleteFileFromUserGPT(userId, requestData.FileID)
+	//	if err != nil {
+	//		logger.Error("'FileDelete' Ошибка при удалении файла из БД: %v", err, userId)
+	//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	//		return
+	//	}
+	//}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",
@@ -645,6 +645,12 @@ func (w *Web) FileAdd(c *gin.Context) {
 
 	// Обрабатываем каждый файл
 	for _, file := range requestData.Files {
+		// Проверяем входные значения
+		if userId == 0 || file.FileID == "" || file.FileName == "" {
+			logger.Warn("получены некорректные значения: userId, fileID или fileName пусты")
+			continue
+		}
+
 		if err := w.db.AddFileFromUserGPT(userId, file.FileID, file.FileName); err != nil {
 			logger.Error("'FileAdd' Ошибка добавления файла в БД: %v", err, userId)
 			continue

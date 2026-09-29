@@ -73,6 +73,11 @@ func (w *Web) DeleteAllUserDataWSSHandler(c *gin.Context) {
 	}
 	userID := uid.(uint32)
 
+	if userID == 0 {
+		logger.Error("получен некорректный userId")
+		return
+	}
+
 	active, err := w.db.CheckActiveChannels(userID)
 	if err != nil {
 		logger.Error("DeleteAllUserDataWSSHandler: ошибка проверки активных каналов: %v", err, userID)

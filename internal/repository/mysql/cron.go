@@ -111,10 +111,6 @@ WHERE u.RoleId = 2 AND a.Disabled = 0;
 }
 
 func (i *Implementation) SetUsersSubscriptionNotified(users []uint32) error {
-	if len(users) == 0 {
-		return nil // Нет пользователей для обновления
-	}
-
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 

@@ -11,11 +11,6 @@ import (
 )
 
 func (i *Implementation) OperatorsList(ctx context.Context, userID uint32) (json.RawMessage, error) {
-	// Проверяем входное значение
-	if userID == 0 {
-		return nil, fmt.Errorf("получен некорректный userID")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -46,14 +41,6 @@ func (i *Implementation) OperatorsList(ctx context.Context, userID uint32) (json
 
 // SaveOperators сохраняет список операторов в таблицу operators через SP SaveOperators.
 func (i *Implementation) SaveOperators(ctx context.Context, userID uint32, operatorType string, data json.RawMessage) error {
-	// Проверяем входные значения
-	if userID == 0 || operatorType == "" {
-		return fmt.Errorf("получены некорректные значения: userID или operatorType пусты")
-	}
-	if len(data) == 0 || !json.Valid(data) {
-		return fmt.Errorf("получены некорректные данные JSON")
-	}
-
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
