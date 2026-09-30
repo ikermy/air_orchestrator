@@ -36,11 +36,17 @@ func (s *Service) CreateTextFile(ctx context.Context, userID uint32, name string
 	return s.put(ctx, userID, name, content, size, "text/plain; charset=utf-8")
 }
 
-func (s *Service) SaveImage(ctx context.Context, userID uint32, name string, content io.Reader, size int64, contentType string) (*File, error) {
+// SaveFile сохраняет произвольный файл с указанным content type.
+// Универсальный метод для инструментов (например, generate_music).
+func (s *Service) SaveFile(ctx context.Context, userID uint32, name string, content io.Reader, size int64, contentType string) (*File, error) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 	return s.put(ctx, userID, name, content, size, contentType)
+}
+
+func (s *Service) SaveImage(ctx context.Context, userID uint32, name string, content io.Reader, size int64, contentType string) (*File, error) {
+	return s.SaveFile(ctx, userID, name, content, size, contentType)
 }
 
 func (s *Service) ListFiles(ctx context.Context, userID uint32) ([]File, error) {

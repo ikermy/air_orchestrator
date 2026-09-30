@@ -1,13 +1,17 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,14 +23,29 @@ import (
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-// ListMistralVoices godoc
-// @Summary Получить список голосов Mistral
+// voiceProvider возвращает голосового провайдера из ?provider= (проставляет
+// authAllowMiddleware). Если параметр не передан — используется Mistral для
+// обратной совместимости со старыми клиентами /model/voices.
+func voiceProvider(c *gin.Context) (comdom.ProviderType, bool) {
+	if prov, ok := c.Get("provider"); ok && prov != nil {
+		return getProvider(c)
+	}
+	return comdom.ProviderMistral, true
+}
+
+// ListVoices godoc
+// @Summary Получить список голосов провайдера
 // @Tags model
 // @Produce json
 // @Security BearerAuth
+// @Param provider query string false "Провайдер (mistral|elevenlabs)"
 // @Router /model/voices [get]
-func (w *Web) ListMistralVoices(c *gin.Context) {
+func (w *Web) ListVoices(c *gin.Context) {
 	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	provider, ok := voiceProvider(c)
 	if !ok {
 		return
 	}
@@ -38,7 +57,7 @@ func (w *Web) ListMistralVoices(c *gin.Context) {
 		return
 	}
 
-	result, err := w.mod.ListMistralVoices(userID, limit, offset, c.DefaultQuery("type", "custom"))
+	result, err := w.mod.ListVoices(userID, provider, limit, offset, c.DefaultQuery("type", "custom"))
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -47,19 +66,24 @@ func (w *Web) ListMistralVoices(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// GetMistralVoice godoc
-// @Summary Получить голос Mistral
+// GetVoice godoc
+// @Summary Получить голос провайдера
 // @Tags model
 // @Produce json
 // @Security BearerAuth
 // @Param voiceID path string true "ID голоса"
+// @Param provider query string false "Провайдер (mistral|elevenlabs)"
 // @Router /model/voices/{voiceID} [get]
-func (w *Web) GetMistralVoice(c *gin.Context) {
+func (w *Web) GetVoice(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
 		return
 	}
-	voice, err := w.mod.GetMistralVoice(userID, c.Param("voiceID"))
+	provider, ok := voiceProvider(c)
+	if !ok {
+		return
+	}
+	voice, err := w.mod.GetVoice(userID, provider, c.Param("voiceID"))
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -67,17 +91,22 @@ func (w *Web) GetMistralVoice(c *gin.Context) {
 	c.JSON(http.StatusOK, voice)
 }
 
-// UpdateMistralVoice godoc
-// @Summary Обновить пользовательский голос Mistral
+// UpdateVoice godoc
+// @Summary Обновить пользовательский голос
 // @Tags model
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param voiceID path string true "ID голоса"
+// @Param provider query string false "Провайдер (mistral|elevenlabs)"
 // @Param body body object true "Данные голоса"
 // @Router /model/voices/{voiceID} [patch]
-func (w *Web) UpdateMistralVoice(c *gin.Context) {
+func (w *Web) UpdateVoice(c *gin.Context) {
 	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	provider, ok := voiceProvider(c)
 	if !ok {
 		return
 	}
@@ -86,7 +115,7 @@ func (w *Web) UpdateMistralVoice(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "voice_id is required"})
 		return
 	}
-	if _, err := w.getOwnedCustomVoice(userID, voiceID); err != nil {
+	if _, err := w.getEditableVoice(userID, provider, voiceID); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
@@ -95,7 +124,7 @@ func (w *Web) UpdateMistralVoice(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	voice, err := w.mod.UpdateMistralVoice(userID, voiceID, request)
+	voice, err := w.mod.UpdateVoice(userID, provider, voiceID, request)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -103,15 +132,20 @@ func (w *Web) UpdateMistralVoice(c *gin.Context) {
 	c.JSON(http.StatusOK, voice)
 }
 
-// DeleteMistralVoice godoc
-// @Summary Удалить пользовательский голос Mistral
+// DeleteVoice godoc
+// @Summary Удалить пользовательский голос
 // @Tags model
 // @Produce json
 // @Security BearerAuth
 // @Param voiceID path string true "ID голоса"
+// @Param provider query string false "Провайдер (mistral|elevenlabs)"
 // @Router /model/voices/{voiceID} [delete]
-func (w *Web) DeleteMistralVoice(c *gin.Context) {
+func (w *Web) DeleteVoice(c *gin.Context) {
 	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	provider, ok := voiceProvider(c)
 	if !ok {
 		return
 	}
@@ -120,11 +154,11 @@ func (w *Web) DeleteMistralVoice(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "voice_id is required"})
 		return
 	}
-	if _, err := w.getOwnedCustomVoice(userID, voiceID); err != nil {
+	if _, err := w.getEditableVoice(userID, provider, voiceID); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-	voice, err := w.mod.DeleteMistralVoice(userID, voiceID)
+	voice, err := w.mod.DeleteVoice(userID, provider, voiceID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -132,15 +166,20 @@ func (w *Web) DeleteMistralVoice(c *gin.Context) {
 	c.JSON(http.StatusOK, voice)
 }
 
-// GetMistralVoiceSample godoc
-// @Summary Получить аудиосэмпл голоса Mistral
+// GetVoiceSample godoc
+// @Summary Получить аудиосэмпл голоса
 // @Tags model
 // @Produce audio/mpeg
 // @Security BearerAuth
 // @Param voiceID path string true "ID голоса"
+// @Param provider query string false "Провайдер (mistral|elevenlabs)"
 // @Router /model/voices/{voiceID}/sample [get]
-func (w *Web) GetMistralVoiceSample(c *gin.Context) {
+func (w *Web) GetVoiceSample(c *gin.Context) {
 	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	provider, ok := voiceProvider(c)
 	if !ok {
 		return
 	}
@@ -149,11 +188,11 @@ func (w *Web) GetMistralVoiceSample(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "voice_id is required"})
 		return
 	}
-	if _, err := w.getOwnedCustomVoice(userID, voiceID); err != nil {
+	if _, err := w.getEditableVoice(userID, provider, voiceID); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
-	sample, contentType, err := w.mod.GetMistralVoiceSample(userID, voiceID)
+	sample, contentType, err := w.mod.GetVoiceSample(userID, provider, voiceID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -162,114 +201,324 @@ func (w *Web) GetMistralVoiceSample(c *gin.Context) {
 	c.DataFromReader(http.StatusOK, -1, contentType, sample, nil)
 }
 
-func (w *Web) getOwnedCustomVoice(userID uint32, voiceID string) (comdom.Voice, error) {
-	_ = userID // Router scopes the lookup to the authenticated user's Mistral account.
-	voice, err := w.mod.GetMistralVoice(userID, voiceID)
+// getEditableVoice проверяет, что голос существует и может изменяться текущим
+// пользователем. Пресеты Mistral читаются, но не редактируются; для ElevenLabs
+// ограничения на стороне API провайдера.
+func (w *Web) getEditableVoice(userID uint32, provider comdom.ProviderType, voiceID string) (comdom.Voice, error) {
+	voice, err := w.mod.GetVoice(userID, provider, voiceID)
 	if err != nil {
 		return comdom.Voice{}, err
 	}
-	// Preset voices are readable, but cannot be changed or deleted through the
-	// custom voice API. Mistral custom voices carry the owning user ID.
-	if voice.UserID == nil || strings.TrimSpace(*voice.UserID) == "" {
-		return comdom.Voice{}, fmt.Errorf("preset voice cannot be modified")
+	if provider == comdom.ProviderMistral {
+		if voice.UserID == nil || strings.TrimSpace(*voice.UserID) == "" {
+			return comdom.Voice{}, fmt.Errorf("preset voice cannot be modified")
+		}
 	}
 	return voice, nil
 }
 
-// CloneMistralVoice godoc
-// @Summary Клонировать голос Mistral
+// GetVoiceSettings godoc
+// @Summary Голосовые настройки провайдера одним запросом (capabilities + модели + голоса)
 // @Tags model
-// @Accept multipart/form-data
 // @Produce json
 // @Security BearerAuth
-// @Param provider formData string true "Провайдер"
-// @Param file formData file true "Аудиофайл"
-// @Router /model/voice/clone [post]
-func (w *Web) CloneMistralVoice(c *gin.Context) {
+// @Param provider query string false "Провайдер (mistral|elevenlabs)"
+// @Router /model/voice/settings [get]
+func (w *Web) GetVoiceSettings(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
 		return
 	}
-	providerName := strings.TrimSpace(c.PostForm("provider"))
-	if providerName == "" {
-		providerName = strings.TrimSpace(c.Query("provider"))
+	provider, ok := voiceProvider(c)
+	if !ok {
+		return
 	}
 
-	provider, err := comdom.FromString(providerName)
-	if err != nil || provider != comdom.ProviderMistral {
-		logger.Error("Неподдерживаемый провайдер", userID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "provider=mistral is required"})
+	// capabilities провайдера и доступность ключа.
+	capabilities := w.mod.GetProviderCapabilities()[provider.String()]
+	availability := w.mod.ProvidersWithApiKeys(userID)
+	available := false
+	for _, name := range availability.Available {
+		if name == provider.String() {
+			available = true
+			break
+		}
+	}
+
+	// Голосовые модели (kind != "") одним чтением каталога.
+	var models json.RawMessage
+	if raw, err := w.db.GetTypesGPT(provider, 0); err == nil {
+		models = raw
+	} else {
+		logger.Warn("GetVoiceSettings: не удалось получить голосовые модели: %v", err, userID)
+	}
+
+	// Голоса провайдера (per-account). Ошибка не должна ломать ответ: фронт
+	// отрисует модели/capabilities и покажет сообщение.
+	limit := 100
+	voices, voicesErr := w.mod.ListVoices(userID, provider, limit, 0, c.DefaultQuery("type", "custom"))
+	if voicesErr != nil {
+		logger.Warn("GetVoiceSettings: не удалось получить голоса: %v", voicesErr, userID)
+	}
+
+	resp := gin.H{
+		"provider":     provider.String(),
+		"voice_only":   provider.IsVoiceOnly(),
+		"available":    available,
+		"capabilities": capabilities,
+	}
+	if models != nil {
+		resp["models"] = models
+	}
+	if voicesErr != nil {
+		resp["voices_error"] = voicesErr.Error()
+	} else {
+		resp["voices"] = voices
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// CloneVoice godoc
+// @Summary Клонировать голос провайдера
+// @Tags model
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param provider query string false "Провайдер (mistral|elevenlabs)"
+// @Param name formData string true "Имя голоса"
+// @Param clone_mode formData string false "instant|professional (только ElevenLabs)"
+// @Param language formData string false "Язык (обязателен для professional/PVC)"
+// @Param model_id formData string false "Модель для обучения PVC"
+// @Param file formData file true "Аудиообразец(ы): file/files/samples"
+// @Router /model/voice/clone [post]
+func (w *Web) CloneVoice(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
 		return
 	}
-	model, err := w.db.GetModelByProvider(userID, provider)
-	if err != nil {
-		logger.Error("Ошибка получения модели пользователя для voice clone: %v", err, userID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Mistral model not found"})
+
+	// Читаем тело один раз и восстанавливаем reader: это защищает от случая,
+	// когда тело уже было частично прочитано, и даёт возможность залогировать
+	// реальный boundary/префикс при ошибке разбора multipart.
+	const maxVoiceCloneBody = 128 << 20 // 128 MiB
+	body, readErr := io.ReadAll(io.LimitReader(c.Request.Body, maxVoiceCloneBody+1))
+	if readErr != nil {
+		logger.Error("CloneVoice: не удалось прочитать тело: %v", readErr, userID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read request body"})
 		return
 	}
-	if model == nil || model.ModelId == 0 {
-		logger.Error("Ошибка model == nil || model.ModelId == 0", userID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Mistral model not found"})
+	if len(body) > maxVoiceCloneBody {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body is too large"})
 		return
 	}
-	modelID := model.ModelId
-	file, header, err := c.Request.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+
+	form, formErr := c.MultipartForm()
+	if formErr != nil {
+		boundary := ""
+		if _, params, mErr := mime.ParseMediaType(c.Request.Header.Get("Content-Type")); mErr == nil {
+			boundary = params["boundary"]
+		}
+		logger.Warn("CloneVoice: multipart не распознан (boundary=%q, len=%d, prefix=%s): %v",
+			boundary, len(body), bodyPreview(body, 240), formErr, userID)
+	}
+	getField := func(key string) string {
+		if form != nil {
+			if vs := form.Value[key]; len(vs) > 0 {
+				return strings.TrimSpace(vs[0])
+			}
+		}
+		return strings.TrimSpace(c.PostForm(key))
+	}
+
+	provider, ok := cloneProvider(c, getField)
+	if !ok {
 		return
 	}
-	defer file.Close()
-	if header.Size > 25<<20 {
-		logger.Error("Размер файла слишком большой", userID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "audio file is too large"})
+	if !provider.Supports(comdom.CapabilityVoiceClone) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("провайдер %s не поддерживает клонирование голоса", provider)})
 		return
 	}
-	audio, err := io.ReadAll(io.LimitReader(file, 25<<20))
-	if err != nil || len(audio) == 0 {
-		logger.Error("Файл не читается или = 0")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid audio file"})
-		return
-	}
-	if err := validateVoiceAudio(header, audio); err != nil {
-		logger.Error("Файл не валидирован %v", err, userID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	name := strings.TrimSpace(c.PostForm("name"))
+
+	name := getField("name")
 	if name == "" {
-		logger.Error("Name is required", userID)
+		logger.Warn("CloneVoice: пустой name (content-type=%s, поля=%v, formErr=%v)",
+			c.ContentType(), multipartKeys(form), formErr, userID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
-	languages := splitVoiceMetadata(c.PostForm("languages"))
-	tags := splitVoiceMetadata(c.PostForm("tags"))
-	var gender, description *string
-	if value := strings.TrimSpace(c.PostForm("gender")); value != "" {
-		gender = &value
+
+	cloneMode := getField("clone_mode")
+	if cloneMode == "" {
+		cloneMode = string(comdom.CloneModeInstant)
 	}
-	if value := strings.TrimSpace(c.PostForm("description")); value != "" {
-		description = &value
-	}
-	data, err := w.mod.GetUserModelByProvider(userID, comdom.ProviderMistral)
-	if err != nil || data == nil {
-		logger.Error("Ошибка err != nil || data == nil")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Mistral model not found"})
+	if !comdom.CloneMode(cloneMode).IsValid() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "clone_mode must be 'instant' or 'professional'"})
 		return
 	}
-	oldVoiceID := ""
-	if data.RealtimeVAD != nil && data.RealtimeVAD.Mistral != nil {
-		if data.RealtimeVAD.Mistral.VoiceID != nil {
-			oldVoiceID = *data.RealtimeVAD.Mistral.VoiceID
-		}
-		if data.RealtimeVAD.Mistral.VoiceClone != nil && data.RealtimeVAD.Mistral.VoiceClone.ProfileID != "" {
-			oldVoiceID = data.RealtimeVAD.Mistral.VoiceClone.ProfileID
-		}
-	}
-	voice, err := w.mod.CreateMistralVoice(userID, comdom.CreateVoiceRequest{Name: name, SampleAudio: base64.StdEncoding.EncodeToString(audio), SampleFilename: &header.Filename, Languages: languages, Tags: tags, Gender: gender, Description: description})
+
+	samples, filenames, err := collectVoiceSamples(form)
 	if err != nil {
-		logger.Error("Ошибка создания голоса %v", err, userID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	oldVoiceID := ""
+	if provider == comdom.ProviderMistral {
+		oldVoiceID = w.currentMistralVoiceID(userID)
+	}
+
+	request := comdom.CreateVoiceRequest{
+		Name:        name,
+		Samples:     samples,
+		SampleAudio: samples[0],
+		CloneMode:   cloneMode,
+		Language:    getField("language"),
+		ModelID:     getField("model_id"),
+		Languages:   splitVoiceMetadata(getField("languages")),
+		Tags:        splitVoiceMetadata(getField("tags")),
+	}
+	if len(filenames) > 0 {
+		fn := filenames[0]
+		request.SampleFilename = &fn
+	}
+	if value := getField("gender"); value != "" {
+		request.Gender = &value
+	}
+	if value := getField("description"); value != "" {
+		request.Description = &value
+	}
+
+	voice, err := w.mod.CreateVoice(userID, provider, request)
+	if err != nil {
+		logger.Error("Ошибка создания голоса: %v", err, userID)
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Mistral: сохраняем голос в модели (RealtimeVAD), обратная совместимость.
+	if provider == comdom.ProviderMistral {
+		if err := w.linkMistralVoice(userID, voice.ID, oldVoiceID); err != nil {
+			if _, cleanupErr := w.mod.DeleteVoice(userID, provider, voice.ID); cleanupErr != nil {
+				logger.Error("Ошибка cleanup нового voice profile %s: %v", voice.ID, cleanupErr, userID)
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"voice": voice})
+}
+
+// cloneProvider определяет провайдера для клонирования: сначала form-поле
+// provider (его отправляет фронтенд), затем ?provider= (контекст), иначе Mistral.
+func cloneProvider(c *gin.Context, getField func(string) string) (comdom.ProviderType, bool) {
+	if name := getField("provider"); name != "" {
+		p, err := comdom.FromString(name)
+		if err != nil || !p.IsValid() {
+			logger.Error("CloneVoice: неверный provider=%q: %v", name, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid provider: " + name})
+			return 0, false
+		}
+		return p, true
+	}
+	if prov, ok := c.Get("provider"); ok && prov != nil {
+		return getProvider(c)
+	}
+	return comdom.ProviderMistral, true
+}
+
+// bodyPreview возвращает безопасный для логов ASCII-превью начала тела.
+func bodyPreview(body []byte, n int) string {
+	if n > len(body) {
+		n = len(body)
+	}
+	return strconv.QuoteToASCII(string(body[:n]))
+}
+
+// multipartKeys возвращает отсортированный список полей формы (диагностика).
+func multipartKeys(form *multipart.Form) []string {
+	if form == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(form.Value)+len(form.File))
+	for k := range form.Value {
+		keys = append(keys, k)
+	}
+	for k := range form.File {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// collectVoiceSamples собирает аудиообразцы из multipart-полей file/files/samples
+// и кодирует их в base64 (как ожидает comdom.CreateVoiceRequest).
+func collectVoiceSamples(form *multipart.Form) ([]string, []string, error) {
+	if form == nil {
+		return nil, nil, fmt.Errorf("multipart form is required")
+	}
+	var headers []*multipart.FileHeader
+	for _, field := range []string{"file", "files", "samples"} {
+		headers = append(headers, form.File[field]...)
+	}
+	if len(headers) == 0 {
+		return nil, nil, fmt.Errorf("at least one audio file is required")
+	}
+	const maxSamples = 25
+	if len(headers) > maxSamples {
+		return nil, nil, fmt.Errorf("too many audio files (max %d)", maxSamples)
+	}
+
+	encoded := make([]string, 0, len(headers))
+	names := make([]string, 0, len(headers))
+	for _, header := range headers {
+		if header.Size > 25<<20 {
+			return nil, nil, fmt.Errorf("audio file is too large: %s", header.Filename)
+		}
+		file, err := header.Open()
+		if err != nil {
+			return nil, nil, fmt.Errorf("cannot open audio file: %s", header.Filename)
+		}
+		audio, err := io.ReadAll(io.LimitReader(file, 25<<20))
+		_ = file.Close()
+		if err != nil || len(audio) == 0 {
+			return nil, nil, fmt.Errorf("invalid audio file: %s", header.Filename)
+		}
+		if err := validateVoiceAudio(header, audio); err != nil {
+			return nil, nil, err
+		}
+		encoded = append(encoded, base64.StdEncoding.EncodeToString(audio))
+		names = append(names, header.Filename)
+	}
+	return encoded, names, nil
+}
+
+// currentMistralVoiceID возвращает текущий выбранный голос Mistral, если задан.
+func (w *Web) currentMistralVoiceID(userID uint32) string {
+	data, err := w.mod.GetUserModelByProvider(userID, comdom.ProviderMistral)
+	if err != nil || data == nil || data.RealtimeVAD == nil || data.RealtimeVAD.Mistral == nil {
+		return ""
+	}
+	mistral := data.RealtimeVAD.Mistral
+	if mistral.VoiceClone != nil && strings.TrimSpace(mistral.VoiceClone.ProfileID) != "" {
+		return mistral.VoiceClone.ProfileID
+	}
+	if mistral.VoiceID != nil {
+		return strings.TrimSpace(*mistral.VoiceID)
+	}
+	return ""
+}
+
+// linkMistralVoice привязывает созданный профиль к realtime-модели Mistral,
+// сохраняя обратную совместимость (RealtimeVAD.Mistral.VoiceID/VoiceClone).
+func (w *Web) linkMistralVoice(userID uint32, newVoiceID, oldVoiceID string) error {
+	data, err := w.mod.GetUserModelByProvider(userID, comdom.ProviderMistral)
+	if err != nil {
+		return err
+	}
+	if data == nil {
+		return fmt.Errorf("Mistral model not found")
 	}
 	if data.RealtimeVAD == nil {
 		data.RealtimeVAD = &comdom.RealtimeVAD{}
@@ -277,25 +526,21 @@ func (w *Web) CloneMistralVoice(c *gin.Context) {
 	if data.RealtimeVAD.Mistral == nil {
 		data.RealtimeVAD.Mistral = &comdom.MistralRealtimeVAD{}
 	}
-	data.RealtimeVAD.Mistral.VoiceID = &voice.ID
+	data.RealtimeVAD.Mistral.VoiceID = &newVoiceID
 	if data.RealtimeVAD.Mistral.VoiceClone == nil {
 		data.RealtimeVAD.Mistral.VoiceClone = &comdom.MistralVoiceCloneConfig{}
 	}
 	data.RealtimeVAD.Mistral.VoiceClone.Enabled = true
-	data.RealtimeVAD.Mistral.VoiceClone.ProfileID = voice.ID
+	data.RealtimeVAD.Mistral.VoiceClone.ProfileID = newVoiceID
 	if err := w.mod.UpdateModelEveryWhere(userID, data); err != nil {
-		if _, cleanupErr := w.mod.DeleteMistralVoice(userID, voice.ID); cleanupErr != nil {
-			logger.Error("Ошибка cleanup нового voice profile %s: %v", voice.ID, cleanupErr, userID)
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return err
 	}
-	if oldVoiceID != "" && oldVoiceID != voice.ID {
-		if _, cleanupErr := w.mod.DeleteMistralVoice(userID, oldVoiceID); cleanupErr != nil {
+	if oldVoiceID != "" && oldVoiceID != newVoiceID {
+		if _, cleanupErr := w.mod.DeleteVoice(userID, comdom.ProviderMistral, oldVoiceID); cleanupErr != nil {
 			logger.Warn("Не удалось удалить старый voice profile %s: %v", oldVoiceID, cleanupErr, userID)
 		}
 	}
-	c.JSON(http.StatusCreated, gin.H{"voice": voice, "model_id": modelID})
+	return nil
 }
 
 func splitVoiceMetadata(value string) []string {
@@ -464,18 +709,9 @@ func (w *Web) List(c *gin.Context) {
 		return
 	}
 
-	// Для Mistral TSS модель не хранятся в таблице БД выходим с ошибкой
-	if provider == comdom.ProviderMistral {
-		logger.Error("Для Мистраль не получены Realtime модели")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "mistral realtime models not found"})
-		return
-	}
-
-	if modelType == 0 {
-		logger.Error("ModelType not specified", userID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid model type"})
-		return
-	}
+	// Fallback: каталог напрямую из БД (LLM + voice_models). Для voice-only
+	// провайдеров (ElevenLabs) modelType игнорируется, поэтому отсутствие type
+	// допустимо — вернутся только голосовые модели.
 	rawJSON, err := w.db.GetTypesGPT(provider, modelType)
 	if err != nil {
 		logger.Error("'GetTypesGPT' Ошибка получения данных: %v", err)
@@ -716,6 +952,12 @@ func (w *Web) CreateModel(c *gin.Context) {
 		return
 	}
 
+	if provider.IsVoiceOnly() {
+		logger.Warn("'CreateModelRequest' провайдер %s — voice-only", provider, userId)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ElevenLabs — voice-only; настраивается в настройках голоса текущей модели"})
+		return
+	}
+
 	var requestData comdom.UniversalModelData
 
 	if err := c.ShouldBindJSON(&requestData); err != nil {
@@ -803,6 +1045,8 @@ func (w *Web) CreateModel(c *gin.Context) {
 		UseModelName: requestData.UseModelName,
 		Provider:     provider,
 		GOAuth:       requestData.GOAuth,
+		CreateMusic:  requestData.CreateMusic,
+		Voice:        requestData.Voice,
 	}
 
 	err = w.mod.SaveModel(userId, umcr, universalData)
@@ -834,6 +1078,12 @@ func (w *Web) UpdateModel(c *gin.Context) {
 
 	provider, ok := getProvider(c)
 	if !ok {
+		return
+	}
+
+	if provider.IsVoiceOnly() {
+		logger.Warn("'UpdateModel' провайдер %s — voice-only", provider, userId)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ElevenLabs — voice-only; настраивается в настройках голоса текущей модели"})
 		return
 	}
 
@@ -915,6 +1165,8 @@ func (w *Web) UpdateModel(c *gin.Context) {
 		UseModelName: requestData.UseModelName,
 		Provider:     provider,
 		GOAuth:       requestData.GOAuth,
+		CreateMusic:  requestData.CreateMusic,
+		Voice:        requestData.Voice,
 	}
 
 	// Полное обновление модели (API провайдера + БД)

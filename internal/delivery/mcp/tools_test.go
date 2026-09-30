@@ -54,6 +54,51 @@ func TestMCP_ToolsList(t *testing.T) {
 	}
 }
 
+// ---- TestMCP_ToolsList_GenerateMusic ----
+
+func TestMCP_ToolsList_GenerateMusic(t *testing.T) {
+	base := []comdom.UniversalModelData{
+		{Provider: comdom.ProviderType(1), S3: true},
+	}
+
+	withMusic := buildHandler(&mockModelStore{models: []comdom.UniversalModelData{
+		{Provider: comdom.ProviderType(1), S3: true, CreateMusic: true},
+	}})
+	tools, err := withMusic.buildToolsList(42, comdom.ProviderType(1))
+	if err != nil {
+		t.Fatalf("buildToolsList returned error: %v", err)
+	}
+	if !hasTool(tools, "generate_music") {
+		t.Errorf("generate_music отсутствует при CreateMusic=true; got %v", toolNames(tools))
+	}
+
+	withoutMusic := buildHandler(&mockModelStore{models: base})
+	tools, err = withoutMusic.buildToolsList(42, comdom.ProviderType(1))
+	if err != nil {
+		t.Fatalf("buildToolsList returned error: %v", err)
+	}
+	if hasTool(tools, "generate_music") {
+		t.Errorf("generate_music виден при CreateMusic=false; got %v", toolNames(tools))
+	}
+}
+
+func hasTool(tools []tool, name string) bool {
+	for _, tl := range tools {
+		if tl.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func toolNames(tools []tool) []string {
+	names := make([]string, 0, len(tools))
+	for _, tl := range tools {
+		names = append(names, tl.Name)
+	}
+	return names
+}
+
 // ---- TestMCP_PromptsGet_System ----
 
 func TestMCP_PromptsGet_System(t *testing.T) {
@@ -73,5 +118,21 @@ func TestMCP_PromptsGet_System(t *testing.T) {
 		if !strings.Contains(hint, substr) {
 			t.Errorf("hint не содержит %q:\n%s", substr, hint)
 		}
+	}
+}
+
+// ---- TestMCP_PromptsGet_System_Music ----
+
+func TestMCP_PromptsGet_System_Music(t *testing.T) {
+	store := &mockModelStore{
+		models: []comdom.UniversalModelData{
+			{Provider: comdom.ProviderType(1), CreateMusic: true},
+		},
+	}
+	h := buildHandler(store)
+
+	hint := h.buildSystemPromptHint(42, comdom.ProviderType(1))
+	if !strings.Contains(hint, "generate_music") {
+		t.Errorf("hint не содержит generate_music:\n%s", hint)
 	}
 }

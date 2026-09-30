@@ -229,54 +229,69 @@ func (i *Implementation) AddFileFromUserGPT(userId uint32, fileID, fileName stri
 	return nil
 }
 
+// GetTypesGPT возвращает объединённый каталог моделей провайдера в едином
+// формате []comdom.ProviderModel (как UpdateModelsListByProvider):
+// LLM-модели (gpt_models/realtime_models) + голосовые модели из voice_models
+// (kind = tts|stt|music|sts). Используется как fallback, когда не удалось
+// обновить каталог через провайдера.
+//
+// Для voice-only провайдеров (ElevenLabs) LLM-каталог не запрашивается, а
+// modelType игнорируется — возвращаются только записи voice_models.
 func (i *Implementation) GetTypesGPT(provider comdom.ProviderType, modelType comdom.ModelType) (json.RawMessage, error) {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
-	// SQL запрос напрямую
-	general := `
-  SELECT JSON_ARRAYAGG(
-   JSON_OBJECT(
-    'Id', gm.Id,
-    'Name', gm.Name
-   )
-  ) AS json_result
-  FROM gpt_models gm WHERE Provider = ?`
+	models := make([]comdom.ProviderModel, 0)
 
-	realtime := `
-  SELECT JSON_ARRAYAGG(
-   JSON_OBJECT(
-    'Id', gm.Id,
-    'Name', gm.Name
-   )
-  ) AS json_result
-  FROM realtime_models gm WHERE Provider = ?`
+	// LLM-каталог: gpt_models для general (в т.ч. modelType=0), realtime_models
+	// для realtime. У voice-only провайдеров LLM-моделей нет — пропускаем.
+	if !provider.IsVoiceOnly() {
+		table := "gpt_models"
+		if modelType.IsRealtime() {
+			table = "realtime_models"
+		}
 
-	query := general
-	if modelType == comdom.RealTime {
-		query = realtime
-	}
+		rows, err := i.Conn().QueryContext(ctx,
+			fmt.Sprintf(`SELECT Id, Name FROM %s WHERE Provider = ? ORDER BY Name`, table), provider)
+		if err != nil {
+			switch {
+			case errors.Is(err, context.DeadlineExceeded):
+				return nil, fmt.Errorf("тайм-аут (%d с) при вызове функции GetTypesGPT: %w", mode.GetSQLTimeToCancel(), err)
+			case errors.Is(err, context.Canceled):
+				return nil, fmt.Errorf("операция отменена: %w", err)
+			default:
+				return nil, fmt.Errorf("ошибка вызова хранимой функции GetTypesGPT: %w", err)
+			}
+		}
+		defer func() { _ = rows.Close() }()
 
-	// Выполняем запрос
-	var result []byte
-	err := i.Conn().QueryRowContext(ctx, query, provider).Scan(&result)
-	if err != nil {
-		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			return nil, fmt.Errorf("тайм-аут (%d с) при вызове функции GetTypesGPT: %w", mode.GetSQLTimeToCancel(), err)
-		case errors.Is(err, context.Canceled):
-			return nil, fmt.Errorf("операция отменена: %w", err)
-		case errors.Is(err, sql.ErrNoRows):
-			return nil, fmt.Errorf("типы GPT не найдены")
-		default:
-			return nil, fmt.Errorf("ошибка вызова хранимой функции GetTypesGPT: %w", err)
+		for rows.Next() {
+			var (
+				id   uint64
+				name string
+			)
+			if err := rows.Scan(&id, &name); err != nil {
+				return nil, fmt.Errorf("ошибка чтения модели провайдера: %w", err)
+			}
+			models = append(models, comdom.ProviderModel{ID: id, Name: strings.TrimSpace(name)})
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("ошибка итерации моделей провайдера: %w", err)
 		}
 	}
 
-	// Проверяем корректность результата
-	if len(result) == 0 {
-		return nil, fmt.Errorf("пустой результат от GetTypesGPT")
+	// Голосовые модели (tts|stt|music|sts) — всегда дополняют ответ; для
+	// voice-only провайдеров это единственный источник моделей.
+	voice, err := i.GetVoiceModels(provider)
+	if err != nil {
+		return nil, err
+	}
+	models = append(models, voice...)
+
+	result, err := json.Marshal(models)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка формирования ответа GetTypesGPT: %w", err)
 	}
 
 	return result, nil

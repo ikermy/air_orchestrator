@@ -512,12 +512,13 @@ func (w *Web) modelRoutes(v1 *gin.RouterGroup) {
 	mod.POST("/update", w.UpdateModel)
 	mod.GET("/list", w.List)
 	mod.GET("/set-active", w.SetModelActive)
-	mod.POST("/voice/clone", w.CloneMistralVoice)
-	mod.GET("/voices", w.ListMistralVoices)
-	mod.GET("/voices/:voiceID", w.GetMistralVoice)
-	mod.PATCH("/voices/:voiceID", w.UpdateMistralVoice)
-	mod.DELETE("/voices/:voiceID", w.DeleteMistralVoice)
-	mod.GET("/voices/:voiceID/sample", w.GetMistralVoiceSample)
+	mod.GET("/voice/settings", w.GetVoiceSettings)
+	mod.POST("/voice/clone", w.CloneVoice)
+	mod.GET("/voices", w.ListVoices)
+	mod.GET("/voices/:voiceID", w.GetVoice)
+	mod.PATCH("/voices/:voiceID", w.UpdateVoice)
+	mod.DELETE("/voices/:voiceID", w.DeleteVoice)
+	mod.GET("/voices/:voiceID/sample", w.GetVoiceSample)
 	// удаление модели происходит в  /ws/delete-model
 }
 

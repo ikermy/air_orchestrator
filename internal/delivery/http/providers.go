@@ -23,10 +23,12 @@ func (w *Web) ProvidersWithApiKeys(c *gin.Context) {
 	}
 
 	providers := w.mod.ProvidersWithApiKeys(userID)
+	capabilities := w.mod.GetProviderCapabilities()
 
 	c.JSON(http.StatusOK, gin.H{
-		"available":   providers.Available,
-		"unavailable": providers.Unavailable,
+		"available":    providers.Available,
+		"unavailable":  providers.Unavailable,
+		"capabilities": capabilities,
 	})
 }
 

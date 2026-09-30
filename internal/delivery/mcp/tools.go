@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ikermy/air-common/pkg/comdom"
 	"github.com/ikermy/air-common/pkg/google_services"
+	"github.com/ikermy/air-common/pkg/model/elevenlabs"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -70,6 +72,14 @@ func (h *Handler) buildToolsList(userId uint32, provider comdom.ProviderType) ([
 			Name:        "lead_target",
 			Description: "Triggers when the dialog goal is achieved. Call this to confirm goal completion.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"resp_id":{"type":"integer","description":"Respondent ID (conversation session ID)"}},"required":["resp_id"]}`),
+		})
+	}
+
+	if modelData.CreateMusic {
+		tools = append(tools, tool{
+			Name:        "generate_music",
+			Description: "Сгенерировать музыку (ElevenLabs). Задай ровно одно: prompt ИЛИ composition_plan. Возвращает ссылку на аудиофайл.",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string","description":"Описание трека (жанр, настроение, инструменты), 1-4100 символов. Взаимоисключающий с composition_plan. Формируется самим ассистентом из запроса пользователя."},"composition_plan":{"type":"object","description":"Детальный план композиции (альтернатива prompt)","properties":{"chunks":{"type":"array","minItems":1,"maxItems":30,"items":{"type":"object","properties":{"text":{"type":"string"},"duration_ms":{"type":"integer","minimum":3000,"maximum":120000}},"required":["text","duration_ms"]}}},"required":["chunks"]},"music_length_ms":{"type":"integer","minimum":3000,"maximum":600000,"description":"Длительность, только с prompt"},"force_instrumental":{"type":"boolean","description":"Только инструментал, только с prompt"},"seed":{"type":"integer","minimum":0,"maximum":2147483647,"description":"Только с composition_plan"}},"required":[]}`),
 		})
 	}
 
@@ -143,7 +153,7 @@ func (h *Handler) buildToolsList(userId uint32, provider comdom.ProviderType) ([
 
 // ========== Диспетчер вызовов ==========
 
-func (h *Handler) callTool(ctx context.Context, params json.RawMessage, userId uint32) toolResult {
+func (h *Handler) callTool(ctx context.Context, params json.RawMessage, userId uint32, provider comdom.ProviderType) toolResult {
 	var p struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -163,6 +173,8 @@ func (h *Handler) callTool(ctx context.Context, params json.RawMessage, userId u
 		return h.toolCreateFile(p.Arguments, userId)
 	case "save_image":
 		return h.toolSaveImage(p.Arguments, userId)
+	case "generate_music":
+		return h.toolGenerateMusic(ctx, p.Arguments, userId, provider)
 	case "calendar_create":
 		return h.toolCalendarCreate(ctx, p.Arguments, userId)
 	case "calendar_list":
@@ -339,6 +351,122 @@ func (h *Handler) toolSaveImage(args json.RawMessage, userId uint32) toolResult 
 	return toolErr("storage is not configured")
 }
 
+func (h *Handler) toolGenerateMusic(ctx context.Context, args json.RawMessage, userId uint32, provider comdom.ProviderType) toolResult {
+	var p struct {
+		Prompt            string                           `json:"prompt"`
+		CompositionPlan   *elevenlabs.MusicCompositionPlan `json:"composition_plan"`
+		MusicLengthMs     *int                             `json:"music_length_ms"`
+		ForceInstrumental *bool                            `json:"force_instrumental"`
+		Seed              *int                             `json:"seed"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return toolErr("invalid params: " + err.Error())
+	}
+	hasPrompt := strings.TrimSpace(p.Prompt) != ""
+	hasPlan := p.CompositionPlan != nil && len(p.CompositionPlan.Chunks) > 0
+	if hasPrompt && hasPlan {
+		return toolErr("invalid params: prompt и composition_plan взаимоисключающие")
+	}
+	if h.files == nil {
+		return toolErr("storage is not configured")
+	}
+	if ctx == nil {
+		ctx = h.ctx
+	}
+
+	apiKey, err := h.store.GetUserAPIKey(userId, comdom.ProviderElevenLabs)
+	if err != nil || strings.TrimSpace(apiKey) == "" {
+		return toolErr("ElevenLabs API key is not configured")
+	}
+
+	// Модель/формат/параметры берём из Voice.Music модели сессии; аргументы
+	// вызова переопределяют настройки.
+	req := elevenlabs.MusicRequest{
+		Prompt:            p.Prompt,
+		CompositionPlan:   p.CompositionPlan,
+		LengthMs:          p.MusicLengthMs,
+		ForceInstrumental: p.ForceInstrumental,
+		Seed:              p.Seed,
+	}
+	music := (*comdom.MusicConfig)(nil)
+	if modelData := h.getUserModel(userId, provider); modelData != nil && modelData.Voice != nil {
+		req.Model = modelData.Voice.MusicModelName()
+		music = modelData.Voice.Music
+	}
+	if music != nil {
+		if req.Format == "" && music.Format != nil {
+			req.Format = *music.Format
+		}
+		if hasPlan {
+			// prompt-параметры несовместимы с composition_plan.
+			if req.Seed == nil {
+				req.Seed = music.Seed
+			}
+		} else {
+			if req.LengthMs == nil {
+				req.LengthMs = music.LengthMs
+			}
+			if req.ForceInstrumental == nil {
+				req.ForceInstrumental = music.ForceInstrumental
+			}
+		}
+	}
+	// Если LLM не передал ни prompt, ни план — берём composition_plan из Voice.
+	if !hasPrompt && !hasPlan {
+		if music != nil {
+			req.CompositionPlan = toMusicCompositionPlan(music.CompositionPlan)
+		}
+		if req.CompositionPlan == nil {
+			return toolErr("invalid params: нужен prompt или composition_plan")
+		}
+		req.Prompt = ""
+	}
+
+	result, err := elevenlabs.NewClient(apiKey).GenerateMusic(ctx, req)
+	if err != nil {
+		return toolErr("failed to generate music: " + err.Error())
+	}
+	defer func() { _ = result.Audio.Close() }()
+
+	data, err := io.ReadAll(result.Audio)
+	if err != nil {
+		return toolErr("failed to read generated music")
+	}
+
+	fileName := result.FileName
+	if strings.TrimSpace(fileName) == "" {
+		fileName = "music.mp3"
+	}
+	contentType := result.ContentType
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "audio/mpeg"
+	}
+
+	file, err := h.files.SaveFile(h.ctx, userId, fileName, bytes.NewReader(data), int64(len(data)), contentType)
+	if err != nil {
+		return toolErr("failed to save music file")
+	}
+	b, _ := json.Marshal(map[string]string{"url": file.URL, "file_name": file.FileName, "type": "audio"})
+	return toolOK(string(b))
+}
+
+// toMusicCompositionPlan конвертирует comdom-план композиции в elevenlabs-форму.
+func toMusicCompositionPlan(plan *comdom.MusicCompositionPlan) *elevenlabs.MusicCompositionPlan {
+	if plan == nil || len(plan.Chunks) == 0 {
+		return nil
+	}
+	chunks := make([]elevenlabs.MusicChunk, 0, len(plan.Chunks))
+	for _, chunk := range plan.Chunks {
+		chunks = append(chunks, elevenlabs.MusicChunk{
+			Text:           chunk.Text,
+			DurationMs:     chunk.DurationMs,
+			PositiveStyles: chunk.PositiveStyles,
+			NegativeStyles: chunk.NegativeStyles,
+		})
+	}
+	return &elevenlabs.MusicCompositionPlan{Chunks: chunks}
+}
+
 func (h *Handler) toolCalendarCreate(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
 	var p google_services.CreateEventParams
 	if err := json.Unmarshal(args, &p); err != nil {
@@ -497,6 +625,13 @@ func (h *Handler) buildSystemPromptHint(userId uint32, provider comdom.ProviderT
 
 	if m.WebSearch {
 		parts = append(parts, "web: use web_search tool for current information.")
+	}
+
+	if m.CreateMusic {
+		parts = append(parts,
+			"Music: use generate_music() when the user asks to create/generate music or a melody.",
+			"After generate_music() — use the returned URL in your response. DO NOT invent URLs.",
+		)
 	}
 
 	return strings.Join(parts, "\n")

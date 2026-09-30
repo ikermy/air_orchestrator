@@ -162,7 +162,7 @@ func (h *Handler) ServeHTTP(c *gin.Context) {
 		})
 
 	case "tools/call":
-		result := h.callTool(c.Request.Context(), req.Params, userId)
+		result := h.callTool(c.Request.Context(), req.Params, userId, provider)
 		c.JSON(http.StatusOK, rpcResponse{
 			JSONRPC: "2.0",
 			ID:      id,

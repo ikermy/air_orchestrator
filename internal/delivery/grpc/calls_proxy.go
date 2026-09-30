@@ -120,6 +120,12 @@ func validateActiveCallModel(userID uint32, provider ActiveModelProvider) error 
 	if !model.Realtime {
 		return status.Error(codes.FailedPrecondition, "active model does not support realtime")
 	}
+	// При realtime_backend=elevenlabs голос обслуживает каскад STT→LLM→TTS,
+	// а RealtimeVAD (initial_greeting/greeting) относится к нативному realtime
+	// провайдера и в этом режиме не задаётся UI. Не требуем его.
+	if model.Voice != nil && model.Voice.UsesElevenLabsRealtime() {
+		return nil
+	}
 	if model.RealtimeVAD == nil || model.RealtimeVAD.InitialGreeting == nil || !*model.RealtimeVAD.InitialGreeting {
 		return status.Error(codes.FailedPrecondition, "initial greeting mode is required")
 	}

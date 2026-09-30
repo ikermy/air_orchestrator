@@ -57,7 +57,7 @@ type UserRepository interface {
 
 // ModelRepository — операции с AI-моделями пользователей.
 type ModelRepository interface {
-	GetTypesGPT() (json.RawMessage, error)
+	GetTypesGPT(provider comdom.ProviderType, modelType comdom.ModelType) (json.RawMessage, error)
 	UpdateDevGPTModel(provider string, modId uint8) error
 	DeleteFileFromUserGPT(userId uint32, fileID string) error
 	AddFileFromUserGPT(userId uint32, fileID, fileName string) error

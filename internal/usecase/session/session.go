@@ -550,42 +550,37 @@ func (ta *TestAPI) StopSession(userId uint32, respId uint64) error {
 
 // getRealtimeProvider возвращает RealtimeProvider для заданного userId и respId.
 // Приоритет поиска:
-//  1. Провайдер из активной TestSession — гарантирует совпадение с тем, которому
-//     принадлежит RespModel (хранится в m.responders конкретного провайдера).
-//  2. Провайдер с уже активной realtime-сессией для данного respId — для вызовов
+//  1. Провайдер из активной TestSession, но только если у него реально есть
+//     сессия для respId — гарантирует совпадение с владельцем RespModel.
+//  2. Любая активная realtime-сессия для respId через Router (включая
+//     ElevenLabs-каскад, которого нет среди GetProviderModel) — для вызовов
 //     после успешного StartRealtimeSession, когда TestSession могла быть очищена.
 //  3. Активный провайдер пользователя из БД (fallback).
 //
-// Использование GetRealtimeProvider(userId) напрямую ненадёжно: он запрашивает
-// АКТИВНОГО провайдера из БД, который может отличаться от того, с которым создана
-// сессия (и где хранится RespModel). Это и было причиной ошибки
-// "StartRealtimeSession: RespModel не найден для respId=...".
+// Важно: провайдер из TestSession нельзя возвращать вслепую — при
+// Voice.realtime_backend=elevenlabs realtime обслуживает каскад воздушного
+// Router'а, а Assist.Provider указывает на LLM-провайдера (например, Mistral),
+// чей нативный SendRealtimeAudio не находит сессию
+// ("Mistral realtime session not found").
 func (ta *TestAPI) getRealtimeProvider(userId uint32, respId uint64) (model.RealtimeProvider, bool) {
-	// 1. Через TestSession (надёжно: тот же провайдер, что использовался в StartSession)
+	// 1. Через TestSession, если у провайдера есть эта сессия.
 	key := ta.sessionKey(userId, respId)
 	if session, ok := ta.sessions.Load(key); ok {
 		s := session.(*TestSession)
 		if s.RespModel != nil && s.RespModel.Assist.Provider != 0 {
-			pmRaw := ta.mod.GetProviderModel(s.RespModel.Assist.Provider)
-			if pmRaw != nil {
-				if rp, ok := pmRaw.(model.RealtimeProvider); ok {
+			if pmRaw := ta.mod.GetProviderModel(s.RespModel.Assist.Provider); pmRaw != nil {
+				if rp, ok := pmRaw.(model.RealtimeProvider); ok && rp.GetRealtimeGenerating(respId) != nil {
 					return rp, true
 				}
 			}
 		}
 	}
 
-	// 2. По наличию активной realtime-сессии у провайдера
-	// (для случая когда TestSession уже удалена CleanupWebSocketSession,
-	// но realtime-сессия ещё активна — вызовы SendRealtimeAudio и т.д.)
-	for _, provType := range []comdom.ProviderType{comdom.ProviderOpenAI, comdom.ProviderGoogle, comdom.ProviderMistral} {
-		pmRaw := ta.mod.GetProviderModel(provType)
-		if pmRaw != nil {
-			if rp, ok := pmRaw.(model.RealtimeProvider); ok {
-				if rp.GetRealtimeGenerating(respId) != nil {
-					return rp, true
-				}
-			}
+	// 2. По наличию активной realtime-сессии: Router сам определяет владельца,
+	// включая cascade (ElevenLabs STT→LLM→TTS).
+	if ta.mod.GetRealtimeGenerating(respId) != nil {
+		if rp, ok := ta.mod.GetRealtimeProvider(userId); ok {
+			return rp, true
 		}
 	}
 
