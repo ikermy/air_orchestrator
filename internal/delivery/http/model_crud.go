@@ -245,12 +245,34 @@ func (w *Web) GetVoiceSettings(c *gin.Context) {
 		}
 	}
 
-	// Голосовые модели (kind != "") одним чтением каталога.
+	// Голосовые модели. Голосовая панель ходит только сюда, поэтому каталог
+	// нужно синхронизировать: GetTypesGPT лишь читает БД. UpdateModelsListByProvider
+	// для voice-only провайдера игнорирует ModelType и дергает
+	// ensureVoiceCatalogFresh → syncVoiceModels (под in-memory throttle).
 	var models json.RawMessage
-	if raw, err := w.db.GetTypesGPT(provider, 0); err == nil {
-		models = raw
+	apiKey, keyErr := w.db.GetUserAPIKey(userID, provider)
+	if keyErr != nil {
+		logger.Warn("GetVoiceSettings: не удалось получить API-ключ %s: %v", provider, keyErr, userID)
+	}
+	syncCtx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+	if res, err := w.mod.UpdateModelsListByProvider(syncCtx, comdom.Union{
+		Provider:  provider,
+		ModelType: comdom.General,
+	}, apiKey); err == nil {
+		if raw, mErr := json.Marshal(res); mErr == nil {
+			models = raw
+		}
 	} else {
-		logger.Warn("GetVoiceSettings: не удалось получить голосовые модели: %v", err, userID)
+		logger.Warn("GetVoiceSettings: не удалось синхронизировать голосовые модели: %v", err, userID)
+	}
+	// Фолбэк: если синк не дал результата — читаем каталог из БД.
+	if models == nil {
+		if raw, err := w.db.GetTypesGPT(provider, 0); err == nil {
+			models = raw
+		} else {
+			logger.Warn("GetVoiceSettings: не удалось получить голосовые модели: %v", err, userID)
+		}
 	}
 
 	// Голоса провайдера (per-account). Ошибка не должна ломать ответ: фронт
@@ -686,6 +708,7 @@ func (w *Web) List(c *gin.Context) {
 		}
 		apiKey, err := w.db.GetUserAPIKey(userID, provider)
 		if err != nil {
+			logger.Error("Ошибка получения API ключа для провайдера %s: %v", provider, err, userID)
 			return
 		}
 
