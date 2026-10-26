@@ -49,20 +49,35 @@ air_orchestrator
 ├── air_payment
 └── air_lead-hunter
 
-air-mon.yml
+build/air-mon.yml
 └── cadvisor ── метрики Docker контейнеров
 
-air-vm.yml
+build/air-vm.yml
 └── victoriametrics ── сборка и хранение метрик
 
-air-vlogs.yml
+build/air-vlogs.yml
 └── victorialogs ── сборка и хранение логов
 
-air-vector.yml
+build/air-vector.yml
 └── vector ── сбор логов Docker-контейнеров и отправка в VictoriaLogs
 
-air-perses.yml
+build/air-perses.yml
 └── perses ── визуализация метрик и логов
+```
+
+## Структура проекта
+
+```text
+.
+├── build/         # Dockerfile, Makefile и compose-файлы (dev.yml, prod.yml, air-*.yml)
+├── cmd/           # точка входа приложения
+├── configs/       # .env и файловые секреты (secrets/ не коммитится)
+├── doc/           # OpenAPI-контракт
+├── docs/          # сгенерированные файлы Swagger
+├── envoy/         # конфигурация шлюза Envoy (dev/prod)
+├── internal/      # код приложения (delivery, usecase, repository, domain)
+├── migrations/    # миграции базы данных
+└── monitoring/    # конфигурация VictoriaMetrics, Vector и Perses
 ```
 
 Сервисы взаимодействуют с orchestrator через HTTP/gRPC-контракты. Состав подключаемых сервисов определяется окружением и Docker-сетями `air_shared`, `app_internal` и `monitoring_shared`.
@@ -81,6 +96,8 @@ docker network create app_internal
 docker network create monitoring_shared
 ```
 
+Затем скопируйте `configs/secrets.example/` в `configs/secrets/` и заполните значения (см. [пример секретов](configs/secrets.example/README.md)).
+
 Для разработки из каталога `build/`:
 
 ```bash
@@ -95,11 +112,11 @@ make down
 docker compose --env-file ../configs/.env -f dev.yml up -d
 ```
 
-Конфигурация лежит в `configs/` (`.env` + `secrets/`), файлы сборки — в `build/` (Dockerfile, compose, Makefile). Для production используется `prod.yml`. Секреты подключаются из `configs/secrets/` и не должны попадать в репозиторий.
+Конфигурация лежит в `configs/` (`.env` + `secrets/`), файлы сборки — в `build/` (Dockerfile, compose, Makefile). Для production используется `build/prod.yml`. Секреты подключаются из `configs/secrets/` и не должны попадать в репозиторий.
 
 ## Мониторинг
 
-`air-vm.yml` запускает VictoriaMetrics, который каждые 30 секунд собирает метрики orchestrator, связанных сервисов, контейнеров (cAdvisor в `air-mon.yml`) и MinIO. `air-vlogs.yml` хранит логи, `air-vector.yml` собирает логи Docker-контейнеров через docker.sock и отправляет их в VictoriaLogs. Визуализация — в Perses (`air-perses.yml`, UI по адресу `/perses/`, дашборды провижнятся из `monitoring/perses`).
+`build/air-vm.yml` запускает VictoriaMetrics, который каждые 30 секунд собирает метрики orchestrator, связанных сервисов, контейнеров (cAdvisor в `build/air-mon.yml`) и MinIO. `build/air-vlogs.yml` хранит логи, `build/air-vector.yml` собирает логи Docker-контейнеров через docker.sock и отправляет их в VictoriaLogs. Визуализация — в Perses (`build/air-perses.yml`, UI по адресу `/perses/`, дашборды провижнятся из `monitoring/perses`). Все контейнеры используют драйвер логирования `json-file` с ротацией до одного файла размером 10 МБ.
 
 ## Документация
 
@@ -108,6 +125,7 @@ docker compose --env-file ../configs/.env -f dev.yml up -d
 - [Конфигурация VictoriaMetrics](monitoring/victoriametrics/prometheus.yml)
 - [Конфигурация Vector](monitoring/vector.yaml)
 - [Perses: конфигурация и дашборды](monitoring/perses)
+- [Файлы сборки Docker](build) (Dockerfile, Makefile, compose-файлы)
 
 ## Экосистема marusia_ai
 

@@ -49,20 +49,35 @@ air_orchestrator
 ├── air_payment
 └── air_lead-hunter
 
-air-mon.yml
+build/air-mon.yml
 └── cadvisor ── Docker container metrics
 
-air-vm.yml
+build/air-vm.yml
 └── victoriametrics ── metrics collection and storage
 
-air-vlogs.yml
+build/air-vlogs.yml
 └── victorialogs ── logs collection and storage
 
-air-vector.yml
+build/air-vector.yml
 └── vector ── Docker container log collection into VictoriaLogs
 
-air-perses.yml
+build/air-perses.yml
 └── perses ── metrics and logs visualization
+```
+
+## Project structure
+
+```text
+.
+├── build/         # Dockerfile, Makefile and compose files (dev.yml, prod.yml, air-*.yml)
+├── cmd/           # application entry point
+├── configs/       # .env and file-based secrets (secrets/ is not committed)
+├── doc/           # OpenAPI contract
+├── docs/          # generated Swagger files
+├── envoy/         # Envoy gateway configuration (dev/prod)
+├── internal/      # application code (delivery, usecase, repository, domain)
+├── migrations/    # database migrations
+└── monitoring/    # VictoriaMetrics, Vector and Perses configuration
 ```
 
 Channel, CRM, payment and lead-hunting services communicate with the orchestrator through HTTP/gRPC contracts. The exact set of services depends on the deployment environment and Docker networks `air_shared`, `app_internal` and `monitoring_shared`.
@@ -81,6 +96,8 @@ docker network create app_internal
 docker network create monitoring_shared
 ```
 
+Then copy `configs/secrets.example/` to `configs/secrets/` and fill in the values (see [secrets example](configs/secrets.example/README.md)).
+
 For development, from the `build/` directory:
 
 ```bash
@@ -95,11 +112,11 @@ Equivalent compose invocation (run from `build/`):
 docker compose --env-file ../configs/.env -f dev.yml up -d
 ```
 
-Configuration lives in `configs/` (`.env` + `secrets/`), build files in `build/` (Dockerfile, compose files, Makefile). Use `prod.yml` for production. Secrets are mounted from `configs/secrets/` and must not be committed.
+Configuration lives in `configs/` (`.env` + `secrets/`), build files in `build/` (Dockerfile, compose files, Makefile). Use `build/prod.yml` for production. Secrets are mounted from `configs/secrets/` and must not be committed.
 
 ## Monitoring
 
-`air-vm.yml` starts VictoriaMetrics, which collects orchestrator, related-service, container (cAdvisor via `air-mon.yml`) and MinIO metrics every 30 seconds. `air-vlogs.yml` stores logs, `air-vector.yml` collects Docker container logs through docker.sock and ships them to VictoriaLogs. Visualization is provided by Perses (`air-perses.yml`, UI at `/perses/`, dashboards provisioned from `monitoring/perses`).
+`build/air-vm.yml` starts VictoriaMetrics, which collects orchestrator, related-service, container (cAdvisor via `build/air-mon.yml`) and MinIO metrics every 30 seconds. `build/air-vlogs.yml` stores logs, `build/air-vector.yml` collects Docker container logs through docker.sock and ships them to VictoriaLogs. Visualization is provided by Perses (`build/air-perses.yml`, UI at `/perses/`, dashboards provisioned from `monitoring/perses`). All containers use the `json-file` logging driver with rotation limited to one 10 MB file.
 
 ## Documentation
 
@@ -108,6 +125,7 @@ Configuration lives in `configs/` (`.env` + `secrets/`), build files in `build/`
 - [VictoriaMetrics configuration](monitoring/victoriametrics/prometheus.yml)
 - [Vector configuration](monitoring/vector.yaml)
 - [Perses configuration and dashboards](monitoring/perses)
+- [Docker build files](build) (Dockerfile, Makefile, compose files)
 
 ## Ecosystem marusia_ai
 
