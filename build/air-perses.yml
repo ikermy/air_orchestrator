@@ -1,13 +1,20 @@
+name: air_orchestrator
+
 services:
   perses:
     image: persesdev/perses:v0.54.0
     container_name: airorc_perses
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     ports:
       - "3000:8080"
     volumes:
-      - ./monitoring/perses/perses-config.yaml:/etc/perses/config.yaml:ro
-      - ./monitoring/perses/provisioning:/etc/perses/provisioning:ro
+      - ../monitoring/perses/perses-config.yaml:/etc/perses/config.yaml:ro
+      - ../monitoring/perses/provisioning:/etc/perses/provisioning:ro
       - perses_data:/perses
     command:
       - "--config=/etc/perses/config.yaml"

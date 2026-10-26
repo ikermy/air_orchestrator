@@ -1,30 +1,34 @@
+name: air_orchestrator
+
 services:
   airorc:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: build/Dockerfile
       args:
-        GO_BUILD_TAGS: ""
-    image: airorc:dev
+        GO_BUILD_TAGS: prod
+    image: ${DOCKER_IMAGE:-airorc:prod}
     container_name: airorc_app
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     volumes:
-      - ./secrets:/run/secrets:ro
-      - ./test.html:/app/test.html:ro # можно удалить
+      - ../configs/secrets:/run/secrets:ro
     environment:
-      - TZ=America/Argentina/Buenos_Aires
-      - DEVELOPMENT=true
-      - NOTIF_TG_IDS=${TG_IDS}
       - DB_HOST=air_db:3306
       - DB_NAME=air
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
-      - REAL_URL=localhost
-      - MINIO_PUBLIC_INSECURE=true
-      - MINIO_PUBLIC_PROXY=envoy:443
+      - NOTIF_TG_IDS=${NOTIF_TG_IDS}
+      - REAL_URL=${DOMAIN}
       - GRPC_PORT=50051
-      - LOG_LEVEL=debug
-      - SWAGGER_ENABLED=true
+      - WHATSAPP_CALLS_GRPC_ADDR=${WHATSAPP_CALLS_GRPC_ADDR:-whatsbot:9090}
+      - TELEGRAM_CALLS_GRPC_ADDR=${TELEGRAM_CALLS_GRPC_ADDR:-tguserbot:9090}
+      - LOG_LEVEL=info
+      - SWAGGER_ENABLED=false
       - APP_MASTER_KEY_FILE=/run/secrets/app_master_key.txt
       - NEW_APP_MASTER_KEY_FILE=/run/secrets/new_app_master_key.txt
       - APP_CONFIG_REKEY=false
@@ -37,7 +41,7 @@ services:
       - MINIO_ACCESS_KEY=root
       - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password.txt
       # ── SQL время отмены контекста долгих операций в секундах ──────────────────────────────────────────────────────
-      - GLOB_SQL_CTX_CANCEL=1
+      - GLOB_SQL_CTX_CANCEL=3
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -49,21 +53,29 @@ services:
     image: envoyproxy/envoy:v1.32-latest
     container_name: airorc_envoy
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
+    entrypoint: /bin/sh
+    command: -c "sed \"s/DOMAIN_PLACEHOLDER/${DOMAIN}/g\" /etc/envoy/envoy.prod.yaml > /tmp/envoy.yaml && envoy -c /tmp/envoy.yaml --log-level warn"
+    environment:
+      - DOMAIN=${DOMAIN}
     ports:
+      - "80:80"
       - "443:443"
-      - "50443:50443"  # gRPC-Web endpoint for the local frontend
-      - "3006:3006"  # Порт БД для внешнего доступа через Envoy
+      - "3006:3006"
+      - "50443:50443"
     volumes:
-      - ./envoy/envoy.dev.yaml:/etc/envoy/envoy.yaml:ro
-      - ./localhost.pem:/etc/envoy/certs/localhost.pem:ro
-      - ./localhost-key.pem:/etc/envoy/certs/localhost-key.pem:ro
-      - ./host.pem:/etc/envoy/certs/host.pem:ro
-      - ./host-key.pem:/etc/envoy/certs/host-key.pem:ro
+      - ../envoy/envoy.prod.yaml:/etc/envoy/envoy.prod.yaml:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - airorc
     networks:
       - app_internal
       - air_shared
+
 
 networks:
   app_internal:

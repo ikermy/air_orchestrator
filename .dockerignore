@@ -1,22 +1,21 @@
-# secret
+# Secrets / configs (не нужны в образе)
 secrets
+configs/
+*.env
+.env
+cfg.env
+secret.env
+secret.env.*
 
 # Git metadata
 .git
 .gitignore
 
-# Local secrets
-secret.env
-secret.env.*
-*.env
-cfg.env
-secrets/
-
 # IDE / editor
 .idea/
 .vscode/
 
-# Build output
+# Build output / артефакты сборки
 bin/
 build/
 dist/
@@ -27,4 +26,31 @@ out/
 tmp/
 temp/
 profiles/
+logs/
 
+# Local dev databases / state
+mysql_data/
+*.sqlite
+*.sqlite3
+
+# Documentation
+doc/
+README.md
+README.ru.md
+
+# CI/CD
+.github/
+
+# Envoy / monitoring / minio configs (не нужны в серверном образе)
+envoy/
+monitoring/
+minio-cors.json
+
+# Certs
+*.pem
+*.key
+*.crt
+
+# Docker compose files
+*.yml
+*.yaml

@@ -81,21 +81,21 @@ docker network create app_internal
 docker network create monitoring_shared
 ```
 
-Для разработки:
+Для разработки из каталога `build/`:
 
 ```bash
-docker compose -f air-db.yml up -d
-docker compose -f air-redis.yml up -d
-docker compose -f air-s3.yml up -d
-docker compose -f air-vm.yml up -d
-docker compose -f air-vlogs.yml up -d
-docker compose -f air-vector.yml up -d
-docker compose -f air-mon.yml up -d
-docker compose -f air-perses.yml up -d
-docker compose -f dev.yml up -d
+make up      # инфраструктура + dev-приложение
+make logs
+make down
 ```
 
-Для production используется `prod.yml`. Секреты подключаются из `secrets/` и не должны попадать в репозиторий.
+Эквивалентный вызов compose (из `build/`):
+
+```bash
+docker compose --env-file ../configs/.env -f dev.yml up -d
+```
+
+Конфигурация лежит в `configs/` (`.env` + `secrets/`), файлы сборки — в `build/` (Dockerfile, compose, Makefile). Для production используется `prod.yml`. Секреты подключаются из `configs/secrets/` и не должны попадать в репозиторий.
 
 ## Мониторинг
 

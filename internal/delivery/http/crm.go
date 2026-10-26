@@ -45,7 +45,14 @@ func (w *Web) proxyCRMPublicRequest(c *gin.Context) {
 	// Читаем тело запроса если есть
 	var bodyBytes []byte
 	if c.Request.Body != nil {
-		bodyBytes, _ = io.ReadAll(c.Request.Body)
+		bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, 10<<20))
+		if err != nil {
+			logger.Error("Ошибка чтения тела запроса в proxyCRMPublicRequest: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения тела запроса"})
+			return
+		}
+		// ⚠️ ВАЖНО: Восстанавливаем тело для последующих middleware
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
 
 	// Создаем новый запрос
@@ -76,8 +83,9 @@ func (w *Web) proxyCRMPublicRequest(c *gin.Context) {
 	}()
 
 	// Читаем ответ
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
+		logger.Error("Ошибка чтения ответа в proxyCRMPublicRequest: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения ответа"})
 		return
 	}
@@ -181,7 +189,7 @@ func (w *Web) proxyAmoCRMOAuthCallback(c *gin.Context) {
 	}
 
 	// Читаем ответ
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		logger.Error("proxyAmoCRMOAuthCallback: ошибка чтения ответа - %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения ответа"})
@@ -236,7 +244,12 @@ func (w *Web) proxyCRMRequest(c *gin.Context) {
 	// Читаем тело запроса
 	var bodyBytes []byte
 	if c.Request.Body != nil {
-		bodyBytes, _ = io.ReadAll(c.Request.Body)
+		bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, 10<<20))
+		if err != nil {
+			logger.Error("proxyCRMRequest: ошибка чтения тела запроса - %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка чтения тела запроса"})
+			return
+		}
 		// ⚠️ ВАЖНО: Восстанавливаем тело для последующих middleware
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
@@ -275,7 +288,7 @@ func (w *Web) proxyCRMRequest(c *gin.Context) {
 	}()
 
 	// Читаем ответ
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		logger.Error("proxyCRMRequest: ошибка чтения ответа - %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения ответа"})

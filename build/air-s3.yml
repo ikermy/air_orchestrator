@@ -1,30 +1,44 @@
+name: air_orchestrator
+
 services:
   minio:
-    image: minio/minio:latest
+    image: coollabsio/minio:latest
     container_name: airorc_minio
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     command: server /data --address ":9000"
     environment:
       MINIO_ROOT_USER: root
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password.txt
       MINIO_SERVER_URL: https://${DOMAIN}
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
     volumes:
       - minio_data:/data
-      - ./secrets/minio_root_password.txt:/run/secrets/minio_root_password.txt:ro
+      - ../configs/secrets/minio_root_password.txt:/run/secrets/minio_root_password.txt:ro
     expose:
       - "9000"
     networks:
       - app_internal
       - air_shared
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 6
 
   minio-init:
-    image: minio/mc:latest
+    image: bitnamilegacy/minio-client:latest
+    user: "root"
     restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     depends_on:
       minio:
         condition: service_healthy
@@ -33,14 +47,12 @@ services:
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password.txt
       REAL_URL: ${DOMAIN}
     volumes:
-      - ./secrets/minio_root_password.txt:/run/secrets/minio_root_password.txt:ro
-      - ./minio-cors.json:/config/cors.json:ro
+      - ../configs/secrets/minio_root_password.txt:/run/secrets/minio_root_password.txt:ro
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
         mc alias set local http://minio:9000 root "$$(cat /run/secrets/minio_root_password.txt)"
         mc mb --ignore-existing local/user-files
-        mc cors set local/user-files /config/cors.json
     networks:
       - app_internal
 

@@ -60,7 +60,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile
+          file: build/Dockerfile
           push: true
           platforms: linux/amd64
           tags: |
@@ -131,8 +131,9 @@ jobs:
 
           # minio-cors.json не хранится в репозитории (лежит на сервере), поэтому
           # копируем только реально существующие пути — иначе scp падает на stat.
+          # build/ содержит Dockerfile, compose-файлы и Makefile.
           files=""
-          for f in prod.yml air-db.yml air-mon.yml air-vm.yml air-vlogs.yml air-vector.yml air-perses.yml air-redis.yml air-s3.yml minio-cors.json envoy monitoring; do
+          for f in build envoy monitoring minio-cors.json; do
             if [ -e "$f" ]; then
               files="$files $f"
             else
@@ -176,17 +177,17 @@ jobs:
           set -u
           cd /bot/marusia/air_orc
           echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
-          mkdir -p secrets envoy monitoring
+          mkdir -p configs/secrets envoy monitoring
           [ -f "envoy.prod.yaml" ] && mv envoy.prod.yaml envoy/envoy.prod.yaml || true
 
           # base64-декодер: значения секретов переносятся байт-в-байт.
           decode() { printf '%s' "$1" | base64 -d; }
 
           # 1. Постоянные secret-файлы (без завершающего \n)
-          decode "$MINIO_ROOT_PASSWORD_B64" > secrets/minio_root_password.txt
-          test -s secrets/minio_root_password.txt
-          [ -n "$MYSQL_ROOT_PASSWORD_B64" ] && decode "$MYSQL_ROOT_PASSWORD_B64" > secrets/mysql_root_password.txt
-          [ -n "$APP_MASTER_KEY_B64" ] && decode "$APP_MASTER_KEY_B64" > secrets/app_master_key.txt
+          decode "$MINIO_ROOT_PASSWORD_B64" > configs/secrets/minio_root_password.txt
+          test -s configs/secrets/minio_root_password.txt
+          [ -n "$MYSQL_ROOT_PASSWORD_B64" ] && decode "$MYSQL_ROOT_PASSWORD_B64" > configs/secrets/mysql_root_password.txt
+          [ -n "$APP_MASTER_KEY_B64" ] && decode "$APP_MASTER_KEY_B64" > configs/secrets/app_master_key.txt
 
           # 2. CORS для MinIO (файл может отсутствовать в чекауте — правим если есть)
           FRONTEND_ORIGIN="$(decode "$FRONTEND_ORIGIN_B64")"
@@ -212,29 +213,30 @@ jobs:
             printf 'DB_USER='; printf '%s' "$DB_USER_DEC"; printf '\n'
             printf 'DB_PASSWORD='; printf '%s' "$DB_PASSWORD_DEC"; printf '\n'
             printf 'NOTIF_TG_IDS='; printf '%s' "$NOTIF_TG_IDS_DEC"; printf '\n'
-          } > .env
-          chmod 600 .env
+          } > configs/.env
+          chmod 600 configs/.env
 
           # 5. Инфраструктура
           # Старые сервисы мониторинга занимают порты 9090/3000/3100, которые
           # нужны VictoriaMetrics/Perses/VictoriaLogs. Их compose-файлы удалены
           # из репозитория, поэтому убираем контейнеры по именам (идемпотентно).
           docker rm -f airorc_prometheus airorc_grafana air_loki air_promtail 2>/dev/null || true
-          docker compose -f air-db.yml up -d
-          docker compose -f air-redis.yml up -d
-          docker compose -f air-vm.yml up -d
-          docker compose -f air-vlogs.yml up -d
-          docker compose -f air-vector.yml up -d
-          docker compose -f air-mon.yml up -d
-          docker compose -f air-perses.yml up -d
-          docker compose -f air-s3.yml up -d
-          docker compose -f air-s3.yml run --rm minio-init
+          COMPOSE="docker compose --env-file configs/.env"
+          $COMPOSE -f build/air-db.yml up -d
+          $COMPOSE -f build/air-redis.yml up -d
+          $COMPOSE -f build/air-vm.yml up -d
+          $COMPOSE -f build/air-vlogs.yml up -d
+          $COMPOSE -f build/air-vector.yml up -d
+          $COMPOSE -f build/air-mon.yml up -d
+          $COMPOSE -f build/air-perses.yml up -d
+          $COMPOSE -f build/air-s3.yml up -d
+          $COMPOSE -f build/air-s3.yml run --rm minio-init
 
           # 6. Приложение
-          docker compose -f prod.yml pull
-          docker compose -f prod.yml up -d --force-recreate
-          docker compose -f prod.yml ps
-          docker compose -f air-s3.yml ps
+          $COMPOSE -f build/prod.yml pull
+          $COMPOSE -f build/prod.yml up -d --force-recreate
+          $COMPOSE -f build/prod.yml ps
+          $COMPOSE -f build/air-s3.yml ps
           docker run --rm --network app_internal curlimages/curl:8.10.1 -fsS http://airorc:8080/v1/storage/health >/dev/null
           docker image prune -f
           REMOTE

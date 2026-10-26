@@ -462,7 +462,8 @@ func (w *Web) widgetRefresh(c *gin.Context) {
 		return
 	}
 
-	const widgetUrl = "http://widget:8080/widget/refresh"
+	//const widgetUrl = "http://widget:8080/widget/refresh"
+	var widgetUrl = config.WidgetBotURL + "widget/refresh"
 
 	resp, err := sendRESP(c.Request.Context(), http.MethodPost, widgetUrl, body)
 	if err != nil {

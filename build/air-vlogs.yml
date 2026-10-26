@@ -1,8 +1,15 @@
+name: air_orchestrator
+
 services:
   victorialogs:
     image: victoriametrics/victoria-logs:v1.52.0
     container_name: airorc_victorialogs
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     ports:
       - "3100:9428"
     volumes:

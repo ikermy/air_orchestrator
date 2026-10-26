@@ -1,10 +1,17 @@
+name: air_orchestrator
+
 services:
   vector:
     image: timberio/vector:0.50.0-debian
     container_name: airorc_vector
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     volumes:
-      - ./monitoring/vector.yaml:/etc/vector/vector.yaml:ro
+      - ../monitoring/vector.yaml:/etc/vector/vector.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - vector_data:/var/lib/vector
     command:

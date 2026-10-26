@@ -1,7 +1,14 @@
+name: air_orchestrator
+
 services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     ports:
       - "8080:8080"
     volumes:

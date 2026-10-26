@@ -255,7 +255,11 @@ func (w *Web) fetchLokiLogsSince(ctx context.Context, userID uint32, limit int, 
 	defer closeResponseBody(resp.Body, "fetchLokiLogsSince")
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		// Читаем для диагностики, вообще ограничение задается в limit, но всё же
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if err != nil {
+			return nil, fmt.Errorf("VictoriaLogs вернул статус %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
 		return nil, fmt.Errorf("VictoriaLogs вернул статус %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 

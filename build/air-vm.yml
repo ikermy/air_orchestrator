@@ -1,12 +1,19 @@
+name: air_orchestrator
+
 services:
   victoriametrics:
     image: victoriametrics/victoria-metrics:v1.152.0
     container_name: airorc_victoriametrics
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     ports:
       - "9090:8428"
     volumes:
-      - ./monitoring/victoriametrics/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/victoriametrics/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - victoriametrics_data:/victoria-metrics-data
     command:
       - "--storageDataPath=/victoria-metrics-data"

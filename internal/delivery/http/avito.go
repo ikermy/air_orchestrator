@@ -64,7 +64,14 @@ func (w *Web) proxyAvitoRequest(c *gin.Context) {
 	// Читаем тело запроса если есть
 	var bodyBytes []byte
 	if c.Request.Body != nil {
-		bodyBytes, _ = io.ReadAll(c.Request.Body)
+		// Авито не должно сойти с ума и слать 100500 мегабайт, но на всякий случай ограничим размер тела запроса
+		// io.LimitReader ограничивает чтение до 10 МБ, если тело больше — вернёт ошибку
+		bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, 10<<20))
+		if err != nil {
+			logger.Error("proxyAvitoRequest: ошибка чтения тела запроса - %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка чтения тела запроса"})
+			return
+		}
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
 
@@ -112,7 +119,7 @@ func (w *Web) proxyAvitoRequest(c *gin.Context) {
 	}
 
 	// Читаем ответ
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		logger.Error("proxyAvitoRequest: ошибка чтения ответа - %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения ответа"})

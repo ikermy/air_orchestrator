@@ -364,7 +364,10 @@ func (s *SMTP) SendCarpinteroVerification(userId uint64, message string) error {
 
 	// Проверяем статус ответа
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if err != nil {
+			logger.Error("ошибка чтения тела ответа: %v", err)
+		}
 		return fmt.Errorf("неожиданный статус ответа: %d, тело: %s", resp.StatusCode, string(bodyBytes))
 	}
 

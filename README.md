@@ -81,21 +81,21 @@ docker network create app_internal
 docker network create monitoring_shared
 ```
 
-For development:
+For development, from the `build/` directory:
 
 ```bash
-docker compose -f air-db.yml up -d
-docker compose -f air-redis.yml up -d
-docker compose -f air-s3.yml up -d
-docker compose -f air-vm.yml up -d
-docker compose -f air-vlogs.yml up -d
-docker compose -f air-vector.yml up -d
-docker compose -f air-mon.yml up -d
-docker compose -f air-perses.yml up -d
-docker compose -f dev.yml up -d
+make up      # infrastructure + dev application
+make logs
+make down
 ```
 
-Use `prod.yml` for production. Secrets are mounted from `secrets/` and must not be committed.
+Equivalent compose invocation (run from `build/`):
+
+```bash
+docker compose --env-file ../configs/.env -f dev.yml up -d
+```
+
+Configuration lives in `configs/` (`.env` + `secrets/`), build files in `build/` (Dockerfile, compose files, Makefile). Use `prod.yml` for production. Secrets are mounted from `configs/secrets/` and must not be committed.
 
 ## Monitoring
 

@@ -52,8 +52,8 @@ secrets.yaml
 logs/
 debug
 
-# Build output
-build/
+# Build output: build/ содержит исходники сборки (Dockerfile, compose, Makefile)
+# и намеренно НЕ игнорируется.
 
 # Database files
 *.db

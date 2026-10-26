@@ -1,8 +1,15 @@
+name: air_orchestrator
+
 services:
   air_redis:
     image: redis:7-alpine
     container_name: air_redis
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
     ports:
       - "6379:6379"
     networks:
