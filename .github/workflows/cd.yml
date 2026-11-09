@@ -254,6 +254,10 @@ jobs:
           $COMPOSE -f build/air-s3.yml run --rm -T --no-deps minio-init < /dev/null
 
           # 6. Приложение
+          # airorc_app/airorc_envoy могли быть созданы вне текущего compose-проекта,
+          # из-за чего compose падает на конфликте имён. Удаляем их (состояния в
+          # контейнерах нет) и пересоздаём из свежего образа.
+          docker rm -f airorc_app airorc_envoy 2>/dev/null || true
           $COMPOSE -f build/prod.yml pull
           $COMPOSE -f build/prod.yml up -d --force-recreate
           $COMPOSE -f build/prod.yml ps
