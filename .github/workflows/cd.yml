@@ -251,7 +251,7 @@ jobs:
           ensure_container airorc_vector build/air-vector.yml
           ensure_container airorc_perses build/air-perses.yml
           ensure_container airorc_minio build/air-s3.yml
-          $COMPOSE -f build/air-s3.yml run --rm --no-deps minio-init
+          $COMPOSE -f build/air-s3.yml run --rm -T --no-deps minio-init < /dev/null
 
           # 6. Приложение
           $COMPOSE -f build/prod.yml pull
