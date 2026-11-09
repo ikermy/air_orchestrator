@@ -262,7 +262,23 @@ jobs:
           $COMPOSE -f build/prod.yml up -d --force-recreate
           $COMPOSE -f build/prod.yml ps
           $COMPOSE -f build/air-s3.yml ps
-          docker run --rm --network app_internal curlimages/curl:8.10.1 -fsS http://airorc:8080/v1/storage/health >/dev/null
+
+          # /v1/storage/health требует авторизации (401), а приложение стартует
+          # не мгновенно — ждём /readyz с ретраями.
+          ready=0
+          for i in $(seq 1 30); do
+            if docker run --rm --network app_internal curlimages/curl:8.10.1 \
+                 -fsS http://airorc:8080/readyz >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != "1" ]; then
+            echo "airorc is not ready after 60s"
+            docker logs --tail 100 airorc_app || true
+            exit 1
+          fi
           docker image prune -f
           REMOTE
 
