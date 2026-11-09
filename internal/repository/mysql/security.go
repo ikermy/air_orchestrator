@@ -6,6 +6,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ikermy/air-common/v2/pkg/comdom"
 	"github.com/ikermy/air-common/v2/pkg/crypto"
+	"github.com/ikermy/air-common/v2/pkg/dbrouter"
 	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
@@ -84,6 +86,11 @@ func (i *Implementation) MigrateUserSecurity(userId uint64, newHash, encEmail, e
 
 	if rows > 0 {
 		logger.Info("DB: пользователь успешно мигрирован на bcrypt+AES", userId)
+		if decoded, decErr := hex.DecodeString(emailHMAC); decErr == nil && len(decoded) == 32 {
+			if dirErr := i.UpsertUserDirectory(ctx, userId, decoded, dbrouter.SlotForUser(userId), 0); dirErr != nil {
+				logger.Warn("DB: не удалось обновить user_directory для %d: %v", userId, dirErr)
+			}
+		}
 		go i.checkAndFinalizeMigration()
 	}
 

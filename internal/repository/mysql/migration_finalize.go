@@ -184,6 +184,12 @@ func (i *Implementation) RunUserMigrationFinalization(ctx context.Context, batch
 		}
 	}
 
+	// Мигрировавшие пользователи могли войти до появления upsert в
+	// MigrateUserSecurity — добираем их в глобальный каталог.
+	if _, err := i.BackfillUserDirectory(ctx, nil); err != nil {
+		return purged, false, fmt.Errorf("finalize migration: backfill user_directory: %w", err)
+	}
+
 	finalized, err := i.FinalizeEmailHashMigration(ctx)
 	if err != nil {
 		return purged, false, err
