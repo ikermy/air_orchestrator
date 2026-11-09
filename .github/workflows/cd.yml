@@ -245,13 +245,13 @@ jobs:
           }
           ensure_container air_db build/air-db.yml
           ensure_container air_redis build/air-redis.yml
-          $COMPOSE -f build/air-vm.yml up -d
-          $COMPOSE -f build/air-vlogs.yml up -d
-          $COMPOSE -f build/air-vector.yml up -d
-          $COMPOSE -f build/air-mon.yml up -d
-          $COMPOSE -f build/air-perses.yml up -d
-          $COMPOSE -f build/air-s3.yml up -d
-          $COMPOSE -f build/air-s3.yml run --rm minio-init
+          ensure_container cadvisor build/air-mon.yml
+          ensure_container airorc_victoriametrics build/air-vm.yml
+          ensure_container airorc_victorialogs build/air-vlogs.yml
+          ensure_container airorc_vector build/air-vector.yml
+          ensure_container airorc_perses build/air-perses.yml
+          ensure_container airorc_minio build/air-s3.yml
+          $COMPOSE -f build/air-s3.yml run --rm --no-deps minio-init
 
           # 6. Приложение
           $COMPOSE -f build/prod.yml pull
