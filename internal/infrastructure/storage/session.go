@@ -36,7 +36,7 @@ func (s *SessionService) SetCache(cache ReservationCache) { s.cache = cache }
 
 const defaultSessionTTL = 1 * time.Hour
 
-func (s *SessionService) CreateSession(ctx context.Context, userID uint32, ttl time.Duration) (StorageSession, error) {
+func (s *SessionService) CreateSession(ctx context.Context, userID uint64, ttl time.Duration) (StorageSession, error) {
 	if s == nil || s.rootAccessKey == "" || s.rootSecretKey == "" {
 		return StorageSession{}, fmt.Errorf("STS is not configured")
 	}
@@ -112,7 +112,7 @@ func (s *SessionService) CreateSession(ctx context.Context, userID uint32, ttl t
 
 // CreateExternalSession creates the same scoped STS session using decrypted
 // external credentials held only in memory by the caller.
-func CreateExternalSession(endpoint, accessKey, secretKey, bucket, region string, userID uint32, ttl time.Duration) (StorageSession, error) {
+func CreateExternalSession(endpoint, accessKey, secretKey, bucket, region string, userID uint64, ttl time.Duration) (StorageSession, error) {
 	service := NewSessionService(endpoint, endpoint, accessKey, secretKey, bucket, region)
 	return service.CreateSession(context.Background(), userID, ttl)
 }

@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-func (i *Implementation) UpdateNotification(userId uint32, tip string, status bool, telegaId uint64) error {
+func (i *Implementation) UpdateNotification(userId uint64, tip string, status bool, telegaId uint64) error {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -94,7 +94,7 @@ func (i *Implementation) UpdateNotification(userId uint32, tip string, status bo
 	return nil
 }
 
-func (i *Implementation) GetNotificationsData(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetNotificationsData(userId uint64) (json.RawMessage, error) {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -199,7 +199,7 @@ func (i *Implementation) GetNotificationsData(userId uint32) (json.RawMessage, e
 	return result, nil
 }
 
-func (i *Implementation) SaveNotificationEvent(userId uint32, start, end, target bool) error {
+func (i *Implementation) SaveNotificationEvent(userId uint64, start, end, target bool) error {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -256,7 +256,7 @@ func (i *Implementation) SaveNotificationEvent(userId uint32, start, end, target
 	return nil
 }
 
-func (i *Implementation) DeleteNotificationsChannel(userId uint32, chanelName string) error {
+func (i *Implementation) DeleteNotificationsChannel(userId uint64, chanelName string) error {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()

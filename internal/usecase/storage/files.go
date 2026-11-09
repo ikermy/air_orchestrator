@@ -32,24 +32,24 @@ func NewService(resolver infra.StorageResolver) *Service {
 	return &Service{resolver: resolver}
 }
 
-func (s *Service) CreateTextFile(ctx context.Context, userID uint32, name string, content io.Reader, size int64) (*File, error) {
+func (s *Service) CreateTextFile(ctx context.Context, userID uint64, name string, content io.Reader, size int64) (*File, error) {
 	return s.put(ctx, userID, name, content, size, "text/plain; charset=utf-8")
 }
 
 // SaveFile сохраняет произвольный файл с указанным content type.
 // Универсальный метод для инструментов (например, generate_music).
-func (s *Service) SaveFile(ctx context.Context, userID uint32, name string, content io.Reader, size int64, contentType string) (*File, error) {
+func (s *Service) SaveFile(ctx context.Context, userID uint64, name string, content io.Reader, size int64, contentType string) (*File, error) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 	return s.put(ctx, userID, name, content, size, contentType)
 }
 
-func (s *Service) SaveImage(ctx context.Context, userID uint32, name string, content io.Reader, size int64, contentType string) (*File, error) {
+func (s *Service) SaveImage(ctx context.Context, userID uint64, name string, content io.Reader, size int64, contentType string) (*File, error) {
 	return s.SaveFile(ctx, userID, name, content, size, contentType)
 }
 
-func (s *Service) ListFiles(ctx context.Context, userID uint32) ([]File, error) {
+func (s *Service) ListFiles(ctx context.Context, userID uint64) ([]File, error) {
 	storage, err := s.resolve(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (s *Service) ListFiles(ctx context.Context, userID uint32) ([]File, error) 
 	return files, nil
 }
 
-func (s *Service) DeleteFile(ctx context.Context, userID uint32, key string) error {
+func (s *Service) DeleteFile(ctx context.Context, userID uint64, key string) error {
 	if err := validateUserKey(userID, key); err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (s *Service) DeleteFile(ctx context.Context, userID uint32, key string) err
 	return storage.DeleteObject(ctx, key)
 }
 
-func (s *Service) DeleteAll(ctx context.Context, userID uint32) error {
+func (s *Service) DeleteAll(ctx context.Context, userID uint64) error {
 	storage, err := s.resolve(ctx, userID)
 	if err != nil {
 		return err
@@ -118,7 +118,7 @@ func (s *Service) DeleteAll(ctx context.Context, userID uint32) error {
 	return nil
 }
 
-func (s *Service) put(ctx context.Context, userID uint32, name string, content io.Reader, size int64, contentType string) (*File, error) {
+func (s *Service) put(ctx context.Context, userID uint64, name string, content io.Reader, size int64, contentType string) (*File, error) {
 	if err := validateName(name); err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (s *Service) put(ctx context.Context, userID uint32, name string, content i
 	return &File{Key: object.Key, FileName: name, Size: object.Size, ContentType: contentType, ModifiedAt: object.LastModified, URL: url}, nil
 }
 
-func (s *Service) resolve(ctx context.Context, userID uint32) (infra.Storage, error) {
+func (s *Service) resolve(ctx context.Context, userID uint64) (infra.Storage, error) {
 	if userID == 0 {
 		return nil, fmt.Errorf("invalid user ID")
 	}
@@ -151,7 +151,7 @@ func (s *Service) resolve(ctx context.Context, userID uint32) (infra.Storage, er
 	return s.resolver.Resolve(ctx, userID)
 }
 
-func userPrefix(userID uint32) string { return fmt.Sprintf("users/%d/", userID) }
+func userPrefix(userID uint64) string { return fmt.Sprintf("users/%d/", userID) }
 
 func validateName(name string) error {
 	if strings.TrimSpace(name) == "" || name == "." || name == ".." || name != filepath.Base(name) || strings.ContainsAny(name, "\\/\x00\r\n") {
@@ -168,7 +168,7 @@ func validateName(name string) error {
 	return nil
 }
 
-func validateUserKey(userID uint32, key string) error {
+func validateUserKey(userID uint64, key string) error {
 	prefix := userPrefix(userID)
 	if userID == 0 || !strings.HasPrefix(key, prefix) || strings.ContainsAny(key, "\\\x00\r\n") {
 		return fmt.Errorf("object does not belong to user")

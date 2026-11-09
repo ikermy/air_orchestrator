@@ -9,8 +9,8 @@ import (
 
 type contextUserIDKey struct{}
 
-func userIDFromContext(ctx context.Context) (uint32, error) {
-	userID, ok := ctx.Value(contextUserIDKey{}).(uint32)
+func userIDFromContext(ctx context.Context) (uint64, error) {
+	userID, ok := ctx.Value(contextUserIDKey{}).(uint64)
 	if !ok || userID == 0 {
 		return 0, status.Error(codes.Unauthenticated, "user identity is missing")
 	}
@@ -18,6 +18,6 @@ func userIDFromContext(ctx context.Context) (uint32, error) {
 }
 
 // WithUserID is used by the authentication interceptor and proxy tests.
-func WithUserID(ctx context.Context, userID uint32) context.Context {
+func WithUserID(ctx context.Context, userID uint64) context.Context {
 	return context.WithValue(ctx, contextUserIDKey{}, userID)
 }

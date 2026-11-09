@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 )
 
-func (i *Implementation) GetUserDetails(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetUserDetails(userId uint64) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
@@ -77,7 +78,7 @@ LIMIT 1`
 	return result, nil
 }
 
-func (i *Implementation) GetUserEmail(userId uint32) (string, error) {
+func (i *Implementation) GetUserEmail(userId uint64) (string, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return "", fmt.Errorf("получен некорректный userId")
@@ -109,7 +110,7 @@ func (i *Implementation) GetUserEmail(userId uint32) (string, error) {
 	return data.String, nil
 }
 
-func (i *Implementation) UserInfo(userID uint32) (json.RawMessage, error) {
+func (i *Implementation) UserInfo(userID uint64) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userID == 0 {
 		return nil, fmt.Errorf("получен некорректный userID")
@@ -212,33 +213,163 @@ func (i *Implementation) UserInfo(userID uint32) (json.RawMessage, error) {
 	return result, nil
 }
 
-func (i *Implementation) DeleteAllUserData(userID uint32) error {
-	// Проверяем входное значение
+func (i *Implementation) DeleteAllUserData(userID uint64) error {
 	if userID == 0 {
 		return fmt.Errorf("получен некорректный userID")
 	}
 
-	// Дочерний контекст с тайм-аутом на операцию
-	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel()*3)
 	defer cancel()
 
-	// Вызываем хранимую процедуру для удаления всех данных пользователя
-	_, err := i.Conn().ExecContext(ctx, "CALL DeleteAllUserData(?)", userID)
+	tx, err := i.Conn().BeginTx(ctx, nil)
 	if err != nil {
-		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			return fmt.Errorf("тайм-аут (%d с) при удалении всех данных пользователя: %w", mode.GetSQLTimeToCancel(), err)
-		case errors.Is(err, context.Canceled):
-			return fmt.Errorf("операция отменена: %w", err)
-		default:
-			return fmt.Errorf("ошибка удаления всех данных пользователя: %w", err)
+		return fmt.Errorf("deleteAllUserData begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	simple := []struct {
+		table  string
+		column string
+	}{
+		{"crypto_payments", "user_id"},
+		{"billing", "UserId"},
+		{"subscriptions", "UserId"},
+		{"notifications", "UserId"},
+		{"user_directory", "user_id"},
+		{"user_bot_state", "user_id"},
+		{"user_bot_events", "user_id"},
+		{"user_bots", "user_id"},
+		{"user_channel_configs", "user_id"},
+		{"user_channels", "user_id"},
+		{"dialog_messages", "user_id"},
+		{"dialog_contexts", "user_id"},
+		{"responders", "user_id"},
+		{"channels", "UserId"},
+		{"dialogs", "User"},
+		{"user_auth", "UserId"},
+		{"user_api_keys", "UserId"},
+		{"google_oauth_tokens", "user_id"},
+		{"vector_embeddings", "user_id"},
+		{"crm_oauth_states", "user_id"},
+		{"crm_configs", "user_id"},
+		{"user_storage_config", "user_id"},
+		{"user_storage_quota", "user_id"},
+		{"storage_migrations", "user_id"},
+		{"service_contacts", "UserId"},
+		{"service_gpt", "UserId"},
+		{"service_proxy", "UserId"},
+		{"service_tgbots", "UserId"},
+		{"service_wabots", "UserId"},
+		{"service", "UserId"},
+		{"operators", "UserId"},
+	}
+	for _, item := range simple {
+		query := fmt.Sprintf("DELETE FROM `%s` WHERE `%s` = ?", item.table, item.column)
+		if _, err := tx.ExecContext(ctx, query, userID); err != nil {
+			return fmt.Errorf("deleteAllUserData %s: %w", item.table, err)
 		}
 	}
 
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM user_gpt
+		WHERE Id IN (SELECT ModelId FROM user_models WHERE UserId = ?)`, userID); err != nil {
+		return fmt.Errorf("deleteAllUserData user_gpt: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM user_models WHERE UserId = ?", userID); err != nil {
+		return fmt.Errorf("deleteAllUserData user_models: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE Id = ?", userID); err != nil {
+		return fmt.Errorf("deleteAllUserData users: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO audit_log (user_id, actor_id, action, details)
+		VALUES (?, ?, 'user.hard_delete', JSON_OBJECT('source', 'DeleteAllUserData'))`,
+		userID, userID); err != nil {
+		return fmt.Errorf("deleteAllUserData audit: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("deleteAllUserData commit: %w", err)
+	}
 	return nil
 }
 
-func (i *Implementation) SaveUserTimeZone(userID uint32, timeZone string) error {
+// SoftDeleteUserData marks the user as deleted and records an audit entry.
+// Repeated calls are idempotent.
+func (i *Implementation) SoftDeleteUserData(userID uint64, actorID uint64) error {
+	if userID == 0 {
+		return fmt.Errorf("получен некорректный userID")
+	}
+
+	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
+	defer cancel()
+
+	res, err := i.Conn().ExecContext(ctx, `
+		UPDATE users SET status = 'deleted', deleted_at = NOW(3)
+		WHERE Id = ? AND status <> 'deleted'`, userID)
+	if err != nil {
+		return fmt.Errorf("softDeleteUserData: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return nil
+	}
+
+	if _, err := i.Conn().ExecContext(ctx, `
+		INSERT INTO audit_log (user_id, actor_id, action, details)
+		VALUES (?, ?, 'user.soft_delete', JSON_OBJECT('source', 'SoftDeleteUserData'))`,
+		userID, actorID); err != nil {
+		return fmt.Errorf("softDeleteUserData audit: %w", err)
+	}
+	return nil
+}
+
+// PurgeDeletedUsers hard-deletes users soft-deleted before now-grace.
+// At most limit users are purged per call (limit <= 0 means 100).
+func (i *Implementation) PurgeDeletedUsers(ctx context.Context, grace time.Duration, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	// Compare against DB time to avoid clock skew between the app and MariaDB.
+	graceSeconds := int64(grace / time.Second)
+	if graceSeconds < 0 {
+		graceSeconds = 0
+	}
+
+	rows, err := i.Conn().QueryContext(ctx, `
+		SELECT Id FROM users
+		WHERE status = 'deleted' AND deleted_at IS NOT NULL
+		  AND deleted_at <= DATE_SUB(NOW(3), INTERVAL ? SECOND)
+		ORDER BY Id
+		LIMIT ?`, graceSeconds, limit)
+	if err != nil {
+		return 0, fmt.Errorf("purgeDeletedUsers load: %w", err)
+	}
+	var ids []uint64
+	for rows.Next() {
+		var id uint64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("purgeDeletedUsers scan: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("purgeDeletedUsers close: %w", err)
+	}
+
+	purged := 0
+	for _, id := range ids {
+		if err := i.DeleteAllUserData(id); err != nil {
+			return purged, fmt.Errorf("purgeDeletedUsers user %d: %w", id, err)
+		}
+		purged++
+	}
+	return purged, nil
+}
+
+func (i *Implementation) SaveUserTimeZone(userID uint64, timeZone string) error {
 	// Проверяем входные значения
 	if userID == 0 || timeZone == "" {
 		return fmt.Errorf("получены некорректные значения: userId или timeZone пусты")
@@ -266,7 +397,7 @@ func (i *Implementation) SaveUserTimeZone(userID uint32, timeZone string) error 
 	return nil
 }
 
-func (i *Implementation) SaveUserLanguage(userID uint32, language string) error {
+func (i *Implementation) SaveUserLanguage(userID uint64, language string) error {
 	// Проверяем входные значения
 	if userID == 0 || language == "" {
 		return fmt.Errorf("получены некорректные значения: userId или language пусты")
@@ -296,7 +427,7 @@ func (i *Implementation) SaveUserLanguage(userID uint32, language string) error 
 }
 
 // CheckDemo проверяет, является ли пользователь демо-пользователем (RoleId=1).
-func (i *Implementation) CheckDemo(userId uint32) (bool, error) {
+func (i *Implementation) CheckDemo(userId uint64) (bool, error) {
 	if userId == 0 {
 		return false, fmt.Errorf("получен пустой userId")
 	}

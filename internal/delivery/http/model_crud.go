@@ -19,7 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -204,7 +204,7 @@ func (w *Web) GetVoiceSample(c *gin.Context) {
 // getEditableVoice проверяет, что голос существует и может изменяться текущим
 // пользователем. Пресеты Mistral читаются, но не редактируются; для ElevenLabs
 // ограничения на стороне API провайдера.
-func (w *Web) getEditableVoice(userID uint32, provider comdom.ProviderType, voiceID string) (comdom.Voice, error) {
+func (w *Web) getEditableVoice(userID uint64, provider comdom.ProviderType, voiceID string) (comdom.Voice, error) {
 	voice, err := w.mod.GetVoice(userID, provider, voiceID)
 	if err != nil {
 		return comdom.Voice{}, err
@@ -517,7 +517,7 @@ func collectVoiceSamples(form *multipart.Form) ([]string, []string, error) {
 }
 
 // currentMistralVoiceID возвращает текущий выбранный голос Mistral, если задан.
-func (w *Web) currentMistralVoiceID(userID uint32) string {
+func (w *Web) currentMistralVoiceID(userID uint64) string {
 	data, err := w.mod.GetUserModelByProvider(userID, comdom.ProviderMistral)
 	if err != nil || data == nil || data.RealtimeVAD == nil || data.RealtimeVAD.Mistral == nil {
 		return ""
@@ -534,7 +534,7 @@ func (w *Web) currentMistralVoiceID(userID uint32) string {
 
 // linkMistralVoice привязывает созданный профиль к realtime-модели Mistral,
 // сохраняя обратную совместимость (RealtimeVAD.Mistral.VoiceID/VoiceClone).
-func (w *Web) linkMistralVoice(userID uint32, newVoiceID, oldVoiceID string) error {
+func (w *Web) linkMistralVoice(userID uint64, newVoiceID, oldVoiceID string) error {
 	data, err := w.mod.GetUserModelByProvider(userID, comdom.ProviderMistral)
 	if err != nil {
 		return err
@@ -1267,7 +1267,7 @@ func (w *Web) DeleteModelWSSHandler(c *gin.Context) {
 	w.DeleteModelWSS(conn, userId, provider)
 }
 
-func (w *Web) DeleteModelWSS(conn *websocket.Conn, userId uint32, provider comdom.ProviderType) {
+func (w *Web) DeleteModelWSS(conn *websocket.Conn, userId uint64, provider comdom.ProviderType) {
 	voiceIDs := make([]string, 0, 2)
 	if provider == comdom.ProviderMistral {
 		if data, err := w.mod.GetUserModelByProvider(userId, provider); err == nil && data != nil {
@@ -1343,7 +1343,7 @@ func mistralVoiceIDs(data *comdom.UniversalModelData) []string {
 	return ids
 }
 
-func (w *Web) deleteMistralVoiceWithRetry(userID uint32, voiceID string) error {
+func (w *Web) deleteMistralVoiceWithRetry(userID uint64, voiceID string) error {
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
 		if _, err := w.mod.DeleteMistralVoice(userID, voiceID); err == nil {

@@ -7,8 +7,8 @@ import (
 
 	"air_orchestrator/internal/repository"
 
-	"github.com/ikermy/air-common/pkg/com"
-	"github.com/ikermy/air-common/pkg/endpoint"
+	"github.com/ikermy/air-common/v2/pkg/com"
+	"github.com/ikermy/air-common/v2/pkg/endpoint"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -36,6 +36,14 @@ type Scheduler struct {
 	end              *endpoint.Endpoint
 	migrationWorker  func(context.Context)
 	reservationSweep func(context.Context)
+	purgeWorker      func(context.Context)
+	purgeInterval    time.Duration
+
+	finalMigrationWorker   func(context.Context)
+	finalMigrationInterval time.Duration
+
+	retentionWorker   func(context.Context)
+	retentionInterval time.Duration
 }
 
 func New(parent context.Context, db cronStore, e *endpoint.Endpoint) *Scheduler {
@@ -54,6 +62,25 @@ func (s *Scheduler) SetMigrationWorker(worker func(context.Context)) { s.migrati
 // SetReservationSweep подключает периодическую очистку просроченных reservation.
 func (s *Scheduler) SetReservationSweep(worker func(context.Context)) { s.reservationSweep = worker }
 
+// SetPurgeWorker подключает фоновый hard-delete soft-deleted пользователей.
+func (s *Scheduler) SetPurgeWorker(worker func(context.Context), interval time.Duration) {
+	s.purgeWorker = worker
+	s.purgeInterval = interval
+}
+
+// SetRetentionWorker подключает периодическую чистку исторических таблиц.
+func (s *Scheduler) SetRetentionWorker(worker func(context.Context), interval time.Duration) {
+	s.retentionWorker = worker
+	s.retentionInterval = interval
+}
+
+// SetFinalMigrationWorker подключает проверку окончания миграции пользователей.
+// Воркер запускается сразу при старте и затем с заданным интервалом.
+func (s *Scheduler) SetFinalMigrationWorker(worker func(context.Context), interval time.Duration) {
+	s.finalMigrationWorker = worker
+	s.finalMigrationInterval = interval
+}
+
 func (s *Scheduler) Start() {
 	logger.Info("Cron: планировщик запущен")
 	if s.migrationWorker != nil {
@@ -61,6 +88,15 @@ func (s *Scheduler) Start() {
 	}
 	if s.reservationSweep != nil {
 		go s.runReservationSweep()
+	}
+	if s.purgeWorker != nil {
+		go s.runPurgeWorker()
+	}
+	if s.finalMigrationWorker != nil {
+		go s.runFinalMigrationWorker()
+	}
+	if s.retentionWorker != nil {
+		go s.runRetentionWorker()
 	}
 
 	// Google OAuth токены обновляем каждые 45 минут (они живут час)
@@ -134,6 +170,60 @@ func (s *Scheduler) runReservationSweep() {
 			return
 		case <-ticker.C:
 			s.reservationSweep(s.ctx)
+		}
+	}
+}
+
+func (s *Scheduler) runRetentionWorker() {
+	interval := s.retentionInterval
+	if interval <= 0 {
+		interval = 6 * time.Hour
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.retentionWorker(s.ctx)
+		}
+	}
+}
+
+func (s *Scheduler) runFinalMigrationWorker() {
+	interval := s.finalMigrationInterval
+	if interval <= 0 {
+		interval = time.Hour
+	}
+	// Проверяем сразу при старте: если deadline уже наступил, чистим без ожидания.
+	s.finalMigrationWorker(s.ctx)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.finalMigrationWorker(s.ctx)
+		}
+	}
+}
+
+func (s *Scheduler) runPurgeWorker() {
+	interval := s.purgeInterval
+	if interval <= 0 {
+		interval = time.Hour
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.purgeWorker(s.ctx)
 		}
 	}
 }
@@ -263,7 +353,7 @@ func (s *Scheduler) checkUserSubscription(ctx context.Context) {
 			Code:    com.ErrSubscriptionExpired,
 		}
 		go s.sendSubscriptionError(subErr)
-		go func(u uint32) {
+		go func(u uint64) {
 			if err := s.store.DisableAllUserChannel(u); err != nil {
 				logger.Error("checkUserSubscription: ошибка отключения каналов для пользователя %d: %v", user, err)
 			}

@@ -26,7 +26,7 @@ type ConfigCacheEntry struct {
 }
 
 // CachedBackendConfig stores the resolved config in Redis without plaintext credentials.
-func CachedBackendConfig(ctx context.Context, cache ReservationCache, userID uint32, cfg BackendConfig) error {
+func CachedBackendConfig(ctx context.Context, cache ReservationCache, userID uint64, cfg BackendConfig) error {
 	if cache == nil {
 		return fmt.Errorf("cache is nil")
 	}
@@ -45,7 +45,7 @@ func CachedBackendConfig(ctx context.Context, cache ReservationCache, userID uin
 }
 
 // LoadCachedConfig returns the cached non-secret config, or false if not found.
-func LoadCachedConfig(ctx context.Context, cache ReservationCache, userID uint32) (ConfigCacheEntry, bool) {
+func LoadCachedConfig(ctx context.Context, cache ReservationCache, userID uint64) (ConfigCacheEntry, bool) {
 	if cache == nil {
 		return ConfigCacheEntry{}, false
 	}
@@ -87,7 +87,7 @@ func LoadConnectionCheck(ctx context.Context, cache ReservationCache, endpoint s
 
 // SessionMeta is metadata about an active STS session stored in Redis.
 type SessionMeta struct {
-	UserID    uint32    `json:"user_id"`
+	UserID uint64    `json:"user_id"`
 	Prefix    string    `json:"prefix"`
 	Bucket    string    `json:"bucket"`
 	ExpiresAt time.Time `json:"expires_at"`
@@ -122,7 +122,7 @@ func LoadSessionMeta(ctx context.Context, cache ReservationCache, sessionID stri
 }
 
 // SetQuotaReserved sets a fast-check key in Redis for the user's reserved bytes.
-func SetQuotaReserved(ctx context.Context, cache ReservationCache, userID uint32, size int64) error {
+func SetQuotaReserved(ctx context.Context, cache ReservationCache, userID uint64, size int64) error {
 	if cache == nil {
 		return fmt.Errorf("cache is nil")
 	}
@@ -130,7 +130,7 @@ func SetQuotaReserved(ctx context.Context, cache ReservationCache, userID uint32
 }
 
 // DelQuotaReserved removes the fast-check key.
-func DelQuotaReserved(ctx context.Context, cache ReservationCache, userID uint32) error {
+func DelQuotaReserved(ctx context.Context, cache ReservationCache, userID uint64) error {
 	if cache == nil {
 		return fmt.Errorf("cache is nil")
 	}

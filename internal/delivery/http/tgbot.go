@@ -3,8 +3,10 @@ package web
 import (
 	"air_orchestrator/internal/config"
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +22,39 @@ import (
 // proxyTgBotWebhook проксирует Telegram webhook-обновления на внутренний сервис tgbot.
 // Важно: сохраняет тело запроса без изменений и не добавляет лишних таймаутов для webhook.
 func (w *Web) proxyTgBotWebhook(c *gin.Context) {
+	if w.isDuplicateTelegramUpdate(c) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	}
 	w.proxyTgBotRequest(c, 5*time.Second)
+}
+
+// isDuplicateTelegramUpdate dedupes retries by update_id. It fails open:
+// any parsing/DB error means the update is forwarded.
+func (w *Web) isDuplicateTelegramUpdate(c *gin.Context) bool {
+	if c.Request.Body == nil || w.db == nil {
+		return false
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+	if err != nil || len(body) == 0 {
+		return false
+	}
+
+	var update struct {
+		UpdateID int64 `json:"update_id"`
+	}
+	if err := json.Unmarshal(body, &update); err != nil || update.UpdateID == 0 {
+		return false
+	}
+
+	isNew, err := w.db.RegisterWebhookEvent(
+		c.Request.Context(), "telegram", strconv.FormatInt(update.UpdateID, 10))
+	if err != nil {
+		logger.WarnCtx(c.Request.Context(), "webhook dedup: %v", err)
+		return false
+	}
+	return !isNew
 }
 
 // proxyTgBotSetWebhook godoc

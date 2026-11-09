@@ -23,7 +23,7 @@ func New(store Store, exam service.SecurityService) *MasterKeyUseCase {
 }
 
 // CreateMasterKey создает MasterKey для пользователя.
-func (uc *MasterKeyUseCase) CreateMasterKey(userID uint32, respID uint64, encPass string, progress func(string)) (string, error) {
+func (uc *MasterKeyUseCase) CreateMasterKey(userID uint64, respID uint64, encPass string, progress func(string)) (string, error) {
 	// 1. Проверяем, не существует ли уже MasterKey
 	_, _, hasMK, err := uc.store.GetMasterKeyData(userID)
 	if err != nil {
@@ -106,7 +106,7 @@ func (uc *MasterKeyUseCase) CreateMasterKey(userID uint32, respID uint64, encPas
 }
 
 // VerifyPassword проверяет пароль пользователя.
-func (uc *MasterKeyUseCase) VerifyPassword(userID uint32, respID uint64, encPass string) error {
+func (uc *MasterKeyUseCase) VerifyPassword(userID uint64, respID uint64, encPass string) error {
 	hash, err := uc.store.GetPasswordHash(userID)
 	if err != nil {
 		return fmt.Errorf("ошибка получения хеша пароля: %w", err)
@@ -125,7 +125,7 @@ func (uc *MasterKeyUseCase) VerifyPassword(userID uint32, respID uint64, encPass
 }
 
 // RewrapOrReset перешифровывает MasterKey или сбрасывает его.
-func (uc *MasterKeyUseCase) RewrapOrReset(userID uint32, respID uint64, rawMKB64 string, newPass string) error {
+func (uc *MasterKeyUseCase) RewrapOrReset(userID uint64, respID uint64, rawMKB64 string, newPass string) error {
 	// Если rawMKB64 пустой — значит MasterKey утрачен, сбрасываем всё
 	if rawMKB64 == "" {
 		if err := uc.store.ClearMasterKey(userID); err != nil {
@@ -156,6 +156,6 @@ func (uc *MasterKeyUseCase) RewrapOrReset(userID uint32, respID uint64, rawMKB64
 	return nil
 }
 
-func (uc *MasterKeyUseCase) GetMasterKeyData(userID uint32) (string, string, bool, error) {
+func (uc *MasterKeyUseCase) GetMasterKeyData(userID uint64) (string, string, bool, error) {
 	return uc.store.GetMasterKeyData(userID)
 }

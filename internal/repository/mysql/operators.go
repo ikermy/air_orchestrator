@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 )
 
-func (i *Implementation) OperatorsList(ctx context.Context, userID uint32) (json.RawMessage, error) {
+func (i *Implementation) OperatorsList(ctx context.Context, userID uint64) (json.RawMessage, error) {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
@@ -40,7 +40,7 @@ func (i *Implementation) OperatorsList(ctx context.Context, userID uint32) (json
 }
 
 // SaveOperators сохраняет список операторов в таблицу operators через SP SaveOperators.
-func (i *Implementation) SaveOperators(ctx context.Context, userID uint32, operatorType string, data json.RawMessage) error {
+func (i *Implementation) SaveOperators(ctx context.Context, userID uint64, operatorType string, data json.RawMessage) error {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()

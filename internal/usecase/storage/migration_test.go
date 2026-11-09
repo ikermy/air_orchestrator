@@ -55,7 +55,7 @@ func (m *migrationBackend) PresignedGetURL(context.Context, string, time.Duratio
 
 type migrationStore struct{ record MigrationRecord }
 
-func (s *migrationStore) CreateMigration(context.Context, uint32, infra.BackendType, infra.BackendType) (MigrationRecord, error) {
+func (s *migrationStore) CreateMigration(context.Context, uint64, infra.BackendType, infra.BackendType) (MigrationRecord, error) {
 	return s.record, nil
 }
 func (s *migrationStore) UpdateMigration(_ context.Context, r MigrationRecord) error {

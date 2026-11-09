@@ -42,13 +42,13 @@ type RegisterInput struct {
 
 // RegisterResult — результат успешной регистрации.
 type RegisterResult struct {
-	UserID       uint32
+	UserID uint64
 	ConfirmToken string // токен для письма подтверждения email
 }
 
 // CheckEmail проверяет занятость email и возвращает userID, если он существует.
 // Если пользователь не найден, возвращает временный регистрационный ключ.
-func (uc *AuthUseCase) CheckEmail(mail string) (uint32, string, error) {
+func (uc *AuthUseCase) CheckEmail(mail string) (uint64, string, error) {
 	emailHMAC := uc.exam.EmailHMAC(mail)
 	userID, err := uc.store.CheckEmail(mail, emailHMAC)
 	if err != nil {
@@ -109,7 +109,7 @@ type LoginInput struct {
 
 // LoginResult — результат успешной аутентификации.
 type LoginResult struct {
-	UserID      uint32
+	UserID uint64
 	Confirmed   bool
 	Disabled    bool
 	IsLegacy    bool
@@ -151,7 +151,7 @@ func (uc *AuthUseCase) Authenticate(ctx context.Context, input LoginInput) (*Log
 
 // MigrateLegacyUser выполняет тихую миграцию legacy-хэша (SHA3-256 → bcrypt).
 // Вызывается асинхронно из delivery-слоя.
-func (uc *AuthUseCase) MigrateLegacyUser(userID uint32, password, mail string) error {
+func (uc *AuthUseCase) MigrateLegacyUser(userID uint64, password, mail string) error {
 	newHash, err := uc.exam.HashPassword(password)
 	if err != nil {
 		return fmt.Errorf("ошибка хеширования: %w", err)
@@ -165,7 +165,7 @@ func (uc *AuthUseCase) MigrateLegacyUser(userID uint32, password, mail string) e
 
 // LoadMasterKeyIfExists загружает MasterKey пользователя в RAM-кэш.
 // Возвращает true, если MasterKey существует.
-func (uc *AuthUseCase) LoadMasterKeyIfExists(userID uint32, password string) (bool, error) {
+func (uc *AuthUseCase) LoadMasterKeyIfExists(userID uint64, password string) (bool, error) {
 	encMK, wrapSalt, hasMK, err := uc.store.GetMasterKeyData(userID)
 	if err != nil {
 		return false, fmt.Errorf("ошибка получения MasterKey: %w", err)
@@ -208,7 +208,7 @@ type ResetPasswordInput struct {
 // ResetPassword устанавливает новый пароль пользователю.
 // При наличии RawMasterKey — перешифровывает MasterKey с новым паролем.
 // При отсутствии и наличии существующего MasterKey — очищает зашифрованные данные.
-func (uc *AuthUseCase) ResetPassword(userID uint32, input ResetPasswordInput) error {
+func (uc *AuthUseCase) ResetPassword(userID uint64, input ResetPasswordInput) error {
 	hashedPass, err := uc.exam.HashPassword(input.Password)
 	if err != nil {
 		return fmt.Errorf("ошибка хеширования пароля: %w", err)
@@ -259,7 +259,7 @@ func (uc *AuthUseCase) ResetPassword(userID uint32, input ResetPasswordInput) er
 
 // ConfirmEmail подтверждает email по токену из письма.
 // Возвращает userID и email для дальнейших действий (S3-директория, уведомление).
-func (uc *AuthUseCase) ConfirmEmail(tokenString string) (userID uint32, email string, err error) {
+func (uc *AuthUseCase) ConfirmEmail(tokenString string) (userID uint64, email string, err error) {
 	userID, email, err = uc.exam.ParseMailConfirmationToken(tokenString)
 	if err != nil {
 		return 0, "", fmt.Errorf("недействительный токен: %w", err)

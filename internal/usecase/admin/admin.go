@@ -23,7 +23,7 @@ func New(store Store) *AdminUseCase {
 }
 
 // IsDevUser проверяет, является ли пользователь разработчиком.
-func (uc *AdminUseCase) IsDevUser(userID uint32) (bool, error) {
+func (uc *AdminUseCase) IsDevUser(userID uint64) (bool, error) {
 	data, err := uc.store.GetDevUserData(userID)
 	if err != nil {
 		return false, fmt.Errorf("ошибка проверки прав разработчика: %w", err)

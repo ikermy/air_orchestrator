@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-func (i *Implementation) GetUserDialogs(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetUserDialogs(userId uint64) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
@@ -63,7 +63,7 @@ func (i *Implementation) GetUserDialogs(userId uint32) (json.RawMessage, error) 
 	return json.RawMessage(data.String), nil
 }
 
-func (i *Implementation) GetDevUserData(userId uint32) (json.RawMessage, error) {
+func (i *Implementation) GetDevUserData(userId uint64) (json.RawMessage, error) {
 	// Проверяем входное значение
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
@@ -173,7 +173,7 @@ WHERE u.Id = ?`
 	return result, nil
 }
 
-func (i *Implementation) UpdateDevData(userId uint32, name, encEmail, emailHMAC, sha string) error {
+func (i *Implementation) UpdateDevData(userId uint64, name, encEmail, emailHMAC, sha string) error {
 	// Проверяем входное значение userId
 	if userId == 0 {
 		return fmt.Errorf("получен некорректный userId")

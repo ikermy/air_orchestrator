@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air-common/pkg/com"
-	"github.com/ikermy/air-common/pkg/endpoint"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/com"
+	"github.com/ikermy/air-common/v2/pkg/endpoint"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -322,7 +322,7 @@ func (w *Web) DeleteNotificationsChannel(c *gin.Context) {
 // @Router /notification/instant [post]
 func (w *Web) SendInstantNotification(c *gin.Context) {
 	var requestData struct {
-		UID        uint32 `json:"uid"`
+		UID        uint64 `json:"uid"`
 		Event      string `json:"event"`
 		UserName   string `json:"user"`
 		AssistName string `json:"assist"`
@@ -369,7 +369,7 @@ func (w *Web) SendInstantNotification(c *gin.Context) {
 // @Router /notification/mail [post]
 func (w *Web) SendMailNotification(c *gin.Context) {
 	var requestData struct {
-		UserID     uint32 `json:"uid"`
+		UserID uint64 `json:"uid"`
 		Email      string `json:"email"`
 		Event      string `json:"event"`
 		UserName   string `json:"user"`
@@ -413,7 +413,7 @@ func (w *Web) SendMailNotification(c *gin.Context) {
 // @Router /notification/telega [post]
 func (w *Web) SendTelegaNotification(c *gin.Context) {
 	var requestData struct {
-		UserID     uint32 `json:"uid"`
+		UserID uint64 `json:"uid"`
 		TelegramId int64  `json:"tid"`
 		Event      string `json:"event"`
 		UserName   string `json:"user"`

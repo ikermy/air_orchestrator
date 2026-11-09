@@ -126,7 +126,7 @@ func (w *Web) GetStorageQuota(c *gin.Context) {
 	}
 
 	quotaReader, ok := any(w.db).(interface {
-		StorageQuota(context.Context, uint32) (uint64, uint64, uint64, error)
+		StorageQuota(context.Context, uint64) (uint64, uint64, uint64, error)
 	})
 	if !ok {
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "storage quota repository unavailable"})
@@ -291,7 +291,7 @@ type presignedPutter interface {
 	PresignedPutURL(context.Context, string, time.Duration) (string, error)
 }
 
-func validStorageKey(userID uint32, key string) bool {
+func validStorageKey(userID uint64, key string) bool {
 	prefix := fmt.Sprintf("users/%d/", userID)
 	if !strings.HasPrefix(key, prefix) || strings.ContainsAny(key, "\\\x00\r\n") {
 		return false
@@ -461,7 +461,7 @@ func (w *Web) CommitStorageUpload(c *gin.Context) {
 		}
 	} else {
 		if quota, ok := any(w.db).(interface {
-			CommitStorage(context.Context, uint32, int64) error
+			CommitStorage(context.Context, uint64, int64) error
 		}); ok {
 			if err := quota.CommitStorage(c.Request.Context(), userID, info.Size); err != nil {
 				metrics.StorageCommitTotal.WithLabelValues("error").Inc()
@@ -724,10 +724,10 @@ func (w *Web) StartStorageMigration(c *gin.Context) {
 }
 
 type userConfigProvider interface {
-	StorageConfig(context.Context, uint32) (storage.BackendConfig, error)
+	StorageConfig(context.Context, uint64) (storage.BackendConfig, error)
 }
 
-func resolveMigrationPair(ctx context.Context, factory *storage.StorageFactory, cfgProvider userConfigProvider, userID uint32, targetType storage.BackendType) (storage.Storage, storage.Storage, error) {
+func resolveMigrationPair(ctx context.Context, factory *storage.StorageFactory, cfgProvider userConfigProvider, userID uint64, targetType storage.BackendType) (storage.Storage, storage.Storage, error) {
 	if factory == nil {
 		return nil, nil, fmt.Errorf("storage factory is nil")
 	}
@@ -881,7 +881,7 @@ func (w *Web) PresignStorageDownload(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"key": key, "url": getURL, "expires_in": int(ttl.Seconds())})
 }
 
-func reserveStorage(ctx context.Context, svc *storageusecase.ReservationService, userID uint32, objectKey string, size int64, requested ...string) (reservationID, idempotencyKey string, err error) {
+func reserveStorage(ctx context.Context, svc *storageusecase.ReservationService, userID uint64, objectKey string, size int64, requested ...string) (reservationID, idempotencyKey string, err error) {
 	if svc == nil {
 		metrics.StorageReservationTotal.WithLabelValues("unavailable").Inc()
 		return "", "", fmt.Errorf("reservation service is unavailable")

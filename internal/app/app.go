@@ -23,12 +23,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ikermy/air-common/pkg/com"
-	"github.com/ikermy/air-common/pkg/endpoint"
-	"github.com/ikermy/air-common/pkg/model"
-	"github.com/ikermy/air-common/pkg/model/google"
-	"github.com/ikermy/air-common/pkg/model/mistral"
-	"github.com/ikermy/air-common/pkg/model/openai"
+	"github.com/ikermy/air-common/v2/pkg/com"
+	"github.com/ikermy/air-common/v2/pkg/dbrouter"
+	"github.com/ikermy/air-common/v2/pkg/endpoint"
+	"github.com/ikermy/air-common/v2/pkg/model"
+	"github.com/ikermy/air-common/v2/pkg/model/google"
+	"github.com/ikermy/air-common/v2/pkg/model/mistral"
+	"github.com/ikermy/air-common/v2/pkg/model/openai"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -44,6 +45,7 @@ type App struct {
 	profiler *profiler.Profiler
 	grpc     *grpc.Server
 	prcProxy *grpc.CallsProxy // пока реализован только для звонков но потом всё будет!
+	router   *dbrouter.Router // nil в single-DB режиме
 }
 
 func (a *App) Run() {
@@ -97,6 +99,11 @@ func (a *App) Run() {
 		if err := a.web.Close(); err != nil {
 			logger.Error("App: ошибка при закрытии web: %v", err)
 		}
+		if a.router != nil {
+			if err := a.router.Close(); err != nil {
+				logger.Warn("App: ошибка закрытия shard router: %v", err)
+			}
+		}
 		logger.Info("App: все модули завершены, закрываю соединение с БД")
 
 		bus.WaitAndClose()
@@ -115,6 +122,16 @@ func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) 
 
 	if err := d.EncryptAppConfigSensitiveValues(); err != nil {
 		logger.Fatal("Ошибка шифрования sensitive app_config: %v", err)
+	}
+
+	shardRouter := initShardRouter(ctx)
+	if shardRouter != nil {
+		d.SetShardResolver(shardRouter)
+		if refConn, refErr := shardRouter.DBForReference(); refErr != nil {
+			logger.Debug("DB router: reference connection is not configured: %v", refErr)
+		} else {
+			d.SetReferenceConn(refConn)
+		}
 	}
 
 	e := endpoint.New(ctx, d)
@@ -168,7 +185,7 @@ func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) 
 	}
 
 	if webStorage.Factory != nil {
-		webStorage.Factory.OnStorageLocked(func(userID uint32) {
+		webStorage.Factory.OnStorageLocked(func(userID uint64) {
 			_ = e.SendNotification(com.CarpCh{Event: "reauth-userkey", UserID: userID})
 		})
 	}
@@ -194,6 +211,12 @@ func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) 
 	// Инжектируем web.CallLeadTarget в mcp чтобы избежать дублирования HTTP-логики.
 	// web не импортирует mcp — связь только через LeadTargetFn (func тип).
 	mcpH.SetLeadTargetFn(w.CallLeadTarget)
+	mcpH.SetSessionAuth(config.MCPSessionSecret(), config.MCPRequireSignedSession())
+	mcpH.SetServiceAuth(config.MCPServiceKey())
+
+	if shardRouter != nil {
+		w.AddReadinessCheck(shardRouter.Ping)
+	}
 
 	// Создаём планировщик фоновых задач
 	cr := cron.New(ctx, d, e)
@@ -202,6 +225,41 @@ func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) 
 	}
 	if webStorage.Migrations != nil {
 		cr.SetMigrationWorker(func(ctx context.Context) { _ = webStorage.Migrations.ProcessPending(ctx) })
+	}
+	if config.UserDeleteSoft() {
+		grace := config.UserDeleteGrace()
+		cr.SetPurgeWorker(func(ctx context.Context) {
+			purged, err := d.PurgeDeletedUsers(ctx, grace, 100)
+			if err != nil {
+				logger.Warn("Cron: purge soft-deleted users: %v", err)
+				return
+			}
+			if purged > 0 {
+				logger.Info("Cron: purged %d soft-deleted user(s)", purged)
+			}
+		}, config.UserPurgeInterval())
+	}
+	if config.RetentionEnabled() {
+		cr.SetRetentionWorker(func(ctx context.Context) {
+			if _, err := d.RunRetention(ctx,
+				config.UserBotEventsRetention(),
+				config.AuditLogRetention(),
+				config.WebhookDedupRetention()); err != nil {
+				logger.Warn("Cron: retention: %v", err)
+			}
+		}, config.RetentionInterval())
+	}
+	if config.UserMigrationFinalize() {
+		cr.SetFinalMigrationWorker(func(ctx context.Context) {
+			purged, finalized, err := d.RunUserMigrationFinalization(ctx, 100)
+			if err != nil {
+				logger.Warn("Cron: final user migration: %v", err)
+				return
+			}
+			if purged > 0 || finalized {
+				logger.Info("Cron: final user migration: purged=%d finalized=%t", purged, finalized)
+			}
+		}, config.UserMigrationCheckInterval())
 	}
 
 	// Инициализируем gRPC ConfigService для межсервисного доступа к конфигурациям.
@@ -247,6 +305,7 @@ func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) 
 		profiler: prof,
 		grpc:     g,
 		prcProxy: callsProxy,
+		router:   shardRouter,
 	}
 }
 
@@ -258,7 +317,7 @@ func (a *App) ExitCh() <-chan struct{} {
 // storageEventSender адаптирует endpoint.Endpoint под web.EventSender.
 type storageEventSender struct{ end *endpoint.Endpoint }
 
-func (s *storageEventSender) SendStorageEvent(userID uint32, event string) error {
+func (s *storageEventSender) SendStorageEvent(userID uint64, event string) error {
 	return s.end.SendNotification(com.CarpCh{Event: event, UserID: userID})
 }
 

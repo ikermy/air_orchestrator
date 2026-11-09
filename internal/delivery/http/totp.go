@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // totpPendingSession — временная запись между первым и вторым фактором входа.
 type totpPendingSession struct {
-	userId    uint32
+	userId uint64
 	respId    uint64
 	confirmed bool
 	disabled  bool
@@ -86,7 +86,7 @@ type totpSetupEntry struct {
 }
 
 // storeSetupPending сохраняет сырой TOTP secret в pending (до подтверждения).
-func (w *Web) storeSetupPending(userId uint32, rawSecret string) {
+func (w *Web) storeSetupPending(userId uint64, rawSecret string) {
 	entry := totpSetupEntry{rawSecret: rawSecret, expiresAt: time.Now().Add(totpPendingTTL)}
 	w.totpSetupPending.Store(userId, entry)
 	time.AfterFunc(totpPendingTTL+time.Second, func() {
@@ -95,7 +95,7 @@ func (w *Web) storeSetupPending(userId uint32, rawSecret string) {
 }
 
 // loadAndDeleteSetupPending атомарно извлекает и удаляет pending setup-запись.
-func (w *Web) loadAndDeleteSetupPending(userId uint32) (string, bool) {
+func (w *Web) loadAndDeleteSetupPending(userId uint64) (string, bool) {
 	val, ok := w.totpSetupPending.LoadAndDelete(userId)
 	if !ok {
 		return "", false

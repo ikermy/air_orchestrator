@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/ikermy/air-common/v2/pkg/comdb"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -145,7 +147,7 @@ func (w *Web) LogWSSHandler(c *gin.Context) {
 	w.GetLogWSS(conn, userID)
 }
 
-func (w *Web) GetLogWSS(conn *websocket.Conn, userID uint32) {
+func (w *Web) GetLogWSS(conn *websocket.Conn, userID uint64) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -210,11 +212,11 @@ func (w *Web) GetLogWSS(conn *websocket.Conn, userID uint32) {
 	}
 }
 
-func (w *Web) fetchLokiLogs(ctx context.Context, userID uint32, limit int) ([]LogEntry, error) {
+func (w *Web) fetchLokiLogs(ctx context.Context, userID uint64, limit int) ([]LogEntry, error) {
 	return w.fetchLokiLogsSince(ctx, userID, limit, time.Time{})
 }
 
-func (w *Web) fetchLokiLogsSince(ctx context.Context, userID uint32, limit int, since time.Time) ([]LogEntry, error) {
+func (w *Web) fetchLokiLogsSince(ctx context.Context, userID uint64, limit int, since time.Time) ([]LogEntry, error) {
 	// Запросим данные из VictoriaLogs (Elasticsearch-совместимый приём),
 	// куда Vector отправляет логи через endpoint /insert/elasticsearch/.
 	// Формируем DSL-запрос: фильтр по метке app=air и по вхождению [USER:ID] в поле message.
@@ -472,7 +474,7 @@ func (w *Web) DeleteDialogs(c *gin.Context) {
 	for _, id := range ids {
 		if err := w.db.DeleteDialog(userID, id); err != nil {
 			// Проверяем, является ли это ошибкой демо-пользователя
-			if strings.Contains(err.Error(), "невозможно удалить диалог демо пользователя") {
+			if errors.Is(err, comdb.ErrDemoUserDeletion) {
 				demoRestricted = append(demoRestricted, id)
 				logger.Warn("Попытка удаления диалога %d демо пользователем: %v", id, userID)
 			} else {

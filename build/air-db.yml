@@ -18,10 +18,14 @@ services:
       - MYSQL_PASSWORD=${DB_PASSWORD}
       - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql_root_password.txt
     volumes:
-      - ../mysql_data:/var/lib/mysql
+      - air_db_data:/var/lib/mysql
       - ../configs/secrets:/run/secrets:ro
     networks:
       - air_shared
+
+volumes:
+  air_db_data:
+    name: air_db_data
 
 networks:
   air_shared:

@@ -14,12 +14,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ikermy/air-common/pkg/crypto"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/crypto"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-const testEncryptChannelsUserID uint32 = 23
+const testEncryptChannelsUserID uint64 = 23
 
 func initDBAndExamForSecurityIntegrationTest(t *testing.T) (*Implementation, *exam.Exam, context.CancelFunc) {
 	t.Helper()
@@ -45,7 +45,7 @@ func initDBAndExamForSecurityIntegrationTest(t *testing.T) (*Implementation, *ex
 	}
 
 	if err := loadAppMasterKeyForSecurityIntegrationTest(); err != nil {
-		t.Fatalf("ошибка загрузки APP_MASTER_KEY для теста: %v", err)
+		t.Skipf("security integration test requires APP_MASTER_KEY_FILE: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,7 +66,7 @@ func initDBAndExamForSecurityIntegrationTest(t *testing.T) (*Implementation, *ex
 	if redisCfg.RedisAddr == "" {
 		_ = d.Close()
 		cancel()
-		t.Fatalf("redis не настроен: redisCfg.RedisAddr пустой")
+		t.Skipf("security integration test requires REDIS_ADDR")
 	}
 
 	redisCli, err := rediscache.New(ctx, redisCfg.RedisAddr, redisCfg.RedisPassword, redisCfg.RedisDB)
@@ -126,7 +126,7 @@ func TestEncryptChannelsWSSManual(t *testing.T) {
 
 	mk, ok := x.GetMasterKey(testEncryptChannelsUserID)
 	if !ok {
-		t.Fatalf("master key не найден в cache/redis для userID=%d", testEncryptChannelsUserID)
+		t.Skipf("master key не найден в cache/redis для userID=%d", testEncryptChannelsUserID)
 	}
 
 	t.Logf("master key найден для userID=%d", testEncryptChannelsUserID)
@@ -164,7 +164,7 @@ type channelSnapshot struct {
 	Avito     sql.NullString
 }
 
-func readChannelColumns(t *testing.T, d *Implementation, userID uint32) (channelSnapshot, error) {
+func readChannelColumns(t *testing.T, d *Implementation, userID uint64) (channelSnapshot, error) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(d.Context(), mode.GetSQLTimeToCancel())
@@ -179,6 +179,76 @@ func readChannelColumns(t *testing.T, d *Implementation, userID uint32) (channel
 	}
 
 	return snap, nil
+}
+
+func TestEncryptChannelsUserConfigsWSSLocal(t *testing.T) {
+	ctx := context.Background()
+	repo, err := New(ctx)
+	if err != nil {
+		t.Skipf("database is not configured: %v", err)
+	}
+	defer repo.Conn().Close()
+
+	const (
+		testUserID      uint64 = 999999996
+		testChannelID   uint64 = 999999996000001
+		plaintextConfig        = `{"token":"integration-test"}`
+	)
+
+	cleanup := func() {
+		_, _ = repo.Conn().ExecContext(ctx, `DELETE FROM user_channel_configs WHERE user_id=?`, testUserID)
+		_, _ = repo.Conn().ExecContext(ctx, `DELETE FROM user_channels WHERE user_id=?`, testUserID)
+		_, _ = repo.Conn().ExecContext(ctx, `DELETE FROM channels WHERE UserId=?`, testUserID)
+		_, _ = repo.Conn().ExecContext(ctx, `DELETE FROM users WHERE Id=?`, testUserID)
+	}
+	defer cleanup()
+	cleanup()
+
+	if _, err := repo.Conn().ExecContext(ctx, `
+		INSERT INTO users (Id, Name, RoleId, balance, currency, Lang, TimeZone, Timechange)
+		VALUES (?, 'integration-security-test', 1, 0, 1, 1, 'UTC', NOW())`, testUserID); err != nil {
+		t.Fatalf("create test user: %v", err)
+	}
+	if _, err := repo.Conn().ExecContext(ctx, `
+		INSERT INTO user_channels (id, user_id, channel_type, enabled) VALUES (?, ?, 'widget', 1)`,
+		testChannelID, testUserID); err != nil {
+		t.Fatalf("create v2 channel: %v", err)
+	}
+	// Намеренно не создаём legacy-строку в channels: шифрование v2-конфигов
+	// не должно зависеть от её наличия.
+	if _, err := repo.Conn().ExecContext(ctx, `
+		INSERT INTO user_channel_configs (channel_id, user_id, config) VALUES (?, ?, ?)`,
+		testChannelID, testUserID, plaintextConfig); err != nil {
+		t.Fatalf("create v2 config: %v", err)
+	}
+
+	var masterKey [32]byte
+	for i := range masterKey {
+		masterKey[i] = byte(i + 1)
+	}
+
+	var progress []string
+	if err := repo.EncryptChannelsWSS(testUserID, masterKey, func(msg string) {
+		progress = append(progress, msg)
+	}); err != nil {
+		t.Fatalf("EncryptChannelsWSS: %v", err)
+	}
+
+	var encryptedConfig string
+	if err := repo.Conn().QueryRowContext(ctx,
+		`SELECT config FROM user_channel_configs WHERE channel_id=?`, testChannelID).Scan(&encryptedConfig); err != nil {
+		t.Fatalf("read encrypted config: %v", err)
+	}
+	if !crypto.IsEncryptedWithMasterKey(encryptedConfig) {
+		t.Fatalf("v2 config not encrypted: %q (progress=%v)", encryptedConfig, progress)
+	}
+	decrypted, err := crypto.DecryptFieldWithMasterKey(masterKey, encryptedConfig)
+	if err != nil {
+		t.Fatalf("decrypt v2 config: %v", err)
+	}
+	if decrypted != plaintextConfig {
+		t.Fatalf("decrypted v2 config = %q, want %q", decrypted, plaintextConfig)
+	}
 }
 
 func assertChannelsEncryptedState(t *testing.T, before, after channelSnapshot, progress []string) {

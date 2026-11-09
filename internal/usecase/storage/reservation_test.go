@@ -65,21 +65,21 @@ func (m *mockCache) Keys(_ context.Context, _ string) ([]string, error) {
 
 type mockQuota struct {
 	mu         sync.Mutex
-	reserved   map[uint32]int64
-	used       map[uint32]int64
-	quotaLimit map[uint32]uint64
+	reserved   map[uint64]int64
+	used       map[uint64]int64
+	quotaLimit map[uint64]uint64
 	err        error
 }
 
 func newMockQuota(limit uint64) *mockQuota {
 	return &mockQuota{
-		reserved:   make(map[uint32]int64),
-		used:       make(map[uint32]int64),
-		quotaLimit: map[uint32]uint64{1: limit},
+		reserved:   make(map[uint64]int64),
+		used:       make(map[uint64]int64),
+		quotaLimit: map[uint64]uint64{1: limit},
 	}
 }
 
-func (q *mockQuota) ReserveStorage(_ context.Context, userID uint32, size int64) error {
+func (q *mockQuota) ReserveStorage(_ context.Context, userID uint64, size int64) error {
 	if q.err != nil {
 		return q.err
 	}
@@ -92,7 +92,7 @@ func (q *mockQuota) ReserveStorage(_ context.Context, userID uint32, size int64)
 	return nil
 }
 
-func (q *mockQuota) CommitStorage(_ context.Context, userID uint32, size int64) error {
+func (q *mockQuota) CommitStorage(_ context.Context, userID uint64, size int64) error {
 	if q.err != nil {
 		return q.err
 	}
@@ -106,7 +106,7 @@ func (q *mockQuota) CommitStorage(_ context.Context, userID uint32, size int64) 
 	return nil
 }
 
-func (q *mockQuota) ReleaseStorage(_ context.Context, userID uint32, size int64) error {
+func (q *mockQuota) ReleaseStorage(_ context.Context, userID uint64, size int64) error {
 	if q.err != nil {
 		return q.err
 	}
@@ -120,10 +120,10 @@ func (q *mockQuota) ReleaseStorage(_ context.Context, userID uint32, size int64)
 	return nil
 }
 
-func (q *mockQuota) ListReservedUsers(_ context.Context) ([]uint32, error) {
+func (q *mockQuota) ListReservedUsers(_ context.Context) ([]uint64, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	var users []uint32
+	var users []uint64
 	for uid, r := range q.reserved {
 		if r > 0 {
 			users = append(users, uid)

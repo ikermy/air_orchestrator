@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,11 +28,11 @@ type CallsProxy struct {
 }
 
 type ActiveModelProvider interface {
-	GetActiveUserModel(userID uint32) (*comdom.UniversalModelData, error)
+	GetActiveUserModel(userID uint64) (*comdom.UniversalModelData, error)
 }
 
 type DB interface {
-	CheckDemo(userID uint32) (bool, error)
+	CheckDemo(userID uint64) (bool, error)
 }
 
 func NewCallsProxy(whatsapp, telegram v1.CallsClient, demo DB) *CallsProxy {
@@ -92,7 +92,7 @@ func (p *CallsProxy) StartOutgoingCall(ctx context.Context, req *v1.StartOutgoin
 	return response, nil
 }
 
-func validateDemoUser(userID uint32, checker DB) error {
+func validateDemoUser(userID uint64, checker DB) error {
 	if checker == nil {
 		return status.Error(codes.Unavailable, "demo user checker is not configured")
 	}
@@ -106,7 +106,7 @@ func validateDemoUser(userID uint32, checker DB) error {
 	return nil
 }
 
-func validateActiveCallModel(userID uint32, provider ActiveModelProvider) error {
+func validateActiveCallModel(userID uint64, provider ActiveModelProvider) error {
 	if provider == nil {
 		return status.Error(codes.Unavailable, "active model validator is not configured")
 	}

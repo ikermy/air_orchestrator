@@ -11,10 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ikermy/air-common/pkg/comdom"
-	"github.com/ikermy/air-common/pkg/google_services"
-	"github.com/ikermy/air-common/pkg/model/elevenlabs"
+	"air_orchestrator/internal/config"
+
+	"github.com/ikermy/air-common/v2/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/google_services"
+	"github.com/ikermy/air-common/v2/pkg/model/elevenlabs"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ========== Типы инструментов ==========
@@ -39,7 +42,7 @@ type toolResult struct {
 
 // buildToolsList возвращает инструменты, доступные пользователю,
 // на основе флагов его модели (S3, GOAuth.Calendar, GOAuth.Sheets).
-func (h *Handler) buildToolsList(userId uint32, provider comdom.ProviderType) ([]tool, error) {
+func (h *Handler) buildToolsList(userId uint64, provider comdom.ProviderType) ([]tool, error) {
 	// get_current_time доступен всегда
 	tools := []tool{
 		{
@@ -148,23 +151,154 @@ func (h *Handler) buildToolsList(userId uint32, provider comdom.ProviderType) ([
 		)
 	}
 
-	return tools, nil
+	return withIdempotency(tools), nil
+}
+
+// idempotentTools — инструменты с побочными эффектами, поддерживающие
+// необязательный аргумент idempotency_key.
+var idempotentTools = map[string]bool{
+	"lead_target":     true,
+	"create_file":     true,
+	"save_image":      true,
+	"generate_music":  true,
+	"calendar_create": true,
+	"calendar_delete": true,
+	"sheets_write":    true,
+	"sheets_append":   true,
+}
+
+func withIdempotency(tools []tool) []tool {
+	for i := range tools {
+		if !idempotentTools[tools[i].Name] {
+			continue
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(tools[i].InputSchema, &schema); err != nil {
+			continue
+		}
+		props, _ := schema["properties"].(map[string]any)
+		if props == nil {
+			props = make(map[string]any)
+			schema["properties"] = props
+		}
+		props["idempotency_key"] = map[string]any{
+			"type":        "string",
+			"description": "Optional idempotency key: repeated calls with the same key return the first result",
+		}
+		if b, err := json.Marshal(schema); err == nil {
+			tools[i].InputSchema = b
+		}
+	}
+	return tools
 }
 
 // ========== Диспетчер вызовов ==========
 
-func (h *Handler) callTool(ctx context.Context, params json.RawMessage, userId uint32, provider comdom.ProviderType) toolResult {
+func (h *Handler) callTool(ctx context.Context, params json.RawMessage, userId uint64, provider comdom.ProviderType) toolResult {
 	var p struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
+		logger.WarnCtx(ctx, "MCP audit: user=%d provider=%d tool=<invalid> status=bad_params", userId, provider)
 		return toolErr("invalid params: " + err.Error())
 	}
 
+	ctx, span := tracer.Start(ctx, "mcp.tool.call")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("tool.name", p.Name),
+		attribute.Int("provider", int(provider)),
+		attribute.Int64("user.id", int64(userId)),
+	)
+
+	start := time.Now()
+	res := h.dispatchTool(ctx, p.Name, p.Arguments, userId, provider)
+	elapsed := time.Since(start)
+	span.SetAttributes(attribute.Bool("tool.error", res.IsError))
+	logger.InfoCtx(ctx, "MCP audit: user=%d provider=%d tool=%q status=%s duration_ms=%d",
+		userId, provider, p.Name, toolStatus(res), elapsed.Milliseconds())
+	h.persistAudit(ctx, userId, provider, p.Name, res, elapsed)
+	return res
+}
+
+// persistAudit writes a durable audit record (best effort; logging is the
+// fallback when the database write fails).
+func (h *Handler) persistAudit(ctx context.Context, userID uint64, provider comdom.ProviderType, tool string, res toolResult, elapsed time.Duration) {
+	if h.store == nil {
+		return
+	}
+	details, err := json.Marshal(map[string]any{
+		"tool":        tool,
+		"provider":    int(provider),
+		"status":      toolStatus(res),
+		"duration_ms": elapsed.Milliseconds(),
+	})
+	if err != nil {
+		logger.WarnCtx(ctx, "MCP audit marshal: %v", err, userID)
+		return
+	}
+	auditCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := h.store.WriteAuditLog(auditCtx, userID, "mcp.tool.call", details); err != nil {
+		logger.WarnCtx(ctx, "MCP audit persist: %v", err, userID)
+	}
+}
+
+func toolStatus(res toolResult) string {
+	if res.IsError {
+		return "error"
+	}
+	return "ok"
+}
+
+func (h *Handler) dispatchTool(ctx context.Context, name string, args json.RawMessage, userId uint64, provider comdom.ProviderType) toolResult {
+	timeout := config.MCPToolTimeout
+	if name == "generate_music" {
+		timeout = config.MCPMusicToolTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if !h.allowTool(userId, name) {
+		logger.WarnCtx(ctx, "MCP rate limit: user=%d tool=%q", userId, name)
+		return toolErr("rate limit exceeded")
+	}
+
+	allowed, err := h.isToolAllowed(userId, provider, name)
+	if err != nil {
+		logger.ErrorCtx(ctx, "MCP callTool allowlist: %v", err, userId)
+		return toolErr("tool authorization failed")
+	}
+	if !allowed {
+		logger.WarnCtx(ctx, "MCP callTool: tool %q not allowed for user %d provider %d", name, userId, provider)
+		return toolErr(fmt.Sprintf("tool not allowed: %s", name))
+	}
+
+	if key := extractIdempotencyKey(args); key != "" {
+		cacheKey := fmt.Sprintf("%d:%s:%s", userId, name, key)
+		if cached, ok := h.getIdempotent(cacheKey); ok {
+			return cached
+		}
+		res := h.executeTool(ctx, name, args, userId, provider)
+		if !res.IsError {
+			h.storeIdempotent(cacheKey, res)
+		}
+		return res
+	}
+
+	return h.executeTool(ctx, name, args, userId, provider)
+}
+
+func (h *Handler) executeTool(ctx context.Context, name string, args json.RawMessage, userId uint64, provider comdom.ProviderType) toolResult {
+	p := struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}{Name: name, Arguments: args}
+
 	switch p.Name {
 	case "lead_target":
-		return h.toolLeadTarget(ctx, p.Arguments)
+		return h.toolLeadTarget(ctx, p.Arguments, userId)
 	case "get_current_time":
 		return h.toolGetCurrentTime(userId)
 	case "get_s3_files":
@@ -225,18 +359,43 @@ func (h *Handler) sheetsSvc(ctx context.Context) *google_services.SheetsService 
 
 // ========== Реализации инструментов ==========
 
-func (h *Handler) toolLeadTarget(ctx context.Context, args json.RawMessage) toolResult {
+func (h *Handler) isToolAllowed(userId uint64, provider comdom.ProviderType, name string) (bool, error) {
+	tools, err := h.buildToolsList(userId, provider)
+	if err != nil {
+		return false, err
+	}
+	for _, t := range tools {
+		if t.Name == name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (h *Handler) toolLeadTarget(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p struct {
 		RespId int64 `json:"resp_id"`
 	}
-	if err := json.Unmarshal(args, &p); err != nil || p.RespId == 0 {
+	if err := json.Unmarshal(args, &p); err != nil || p.RespId <= 0 {
 		return toolErr("invalid params: resp_id (integer) required")
+	}
+
+	// Anti-IDOR: resp_id приходит от LLM, поэтому проверяем, что респондент
+	// принадлежит пользователю из подписанной сессии.
+	owned, err := h.store.UserOwnsResponder(userId, uint64(p.RespId))
+	if err != nil {
+		logger.ErrorCtx(ctx, "MCP lead_target ownership check: %v", err, userId)
+		return toolErr("lead_target failed: authorization error")
+	}
+	if !owned {
+		logger.WarnCtx(ctx, "MCP lead_target: access denied rid=%d user=%d", p.RespId, userId)
+		return toolErr("lead_target failed: access denied")
 	}
 
 	// Используем инжектированный колбэк (web.CallLeadTarget) если он установлен,
 	if h.leadTargetFn != nil {
 		if err := h.leadTargetFn(ctx, p.RespId); err != nil {
-			logger.Warn("MCP lead_target: ошибка rid=%d: %v", p.RespId, err)
+			logger.WarnCtx(ctx, "MCP lead_target: ошибка rid=%d: %v", p.RespId, err)
 			return toolErr("lead_target failed: " + err.Error())
 		}
 	}
@@ -245,7 +404,7 @@ func (h *Handler) toolLeadTarget(ctx context.Context, args json.RawMessage) tool
 	return toolOK(string(b))
 }
 
-func (h *Handler) toolGetCurrentTime(userId uint32) toolResult {
+func (h *Handler) toolGetCurrentTime(userId uint64) toolResult {
 	timezone, err := h.store.UserTimeZone(userId)
 	if err != nil {
 		timezone = "UTC"
@@ -283,7 +442,7 @@ func (h *Handler) toolGetCurrentTime(userId uint32) toolResult {
 	return toolOK(string(b))
 }
 
-func (h *Handler) toolGetS3Files(userId uint32) toolResult {
+func (h *Handler) toolGetS3Files(userId uint64) toolResult {
 	if h.files != nil {
 		files, err := h.files.ListFiles(h.ctx, userId)
 		if err != nil {
@@ -295,7 +454,7 @@ func (h *Handler) toolGetS3Files(userId uint32) toolResult {
 	return toolErr("storage is not configured")
 }
 
-func (h *Handler) toolCreateFile(args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolCreateFile(args json.RawMessage, userId uint64) toolResult {
 	var p struct {
 		FileName string `json:"file_name"`
 		Content  string `json:"content"`
@@ -314,7 +473,7 @@ func (h *Handler) toolCreateFile(args json.RawMessage, userId uint32) toolResult
 	return toolErr("storage is not configured")
 }
 
-func (h *Handler) toolSaveImage(args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolSaveImage(args json.RawMessage, userId uint64) toolResult {
 	var p struct {
 		ImageData string `json:"image_data"`
 		FileName  string `json:"file_name"`
@@ -351,7 +510,7 @@ func (h *Handler) toolSaveImage(args json.RawMessage, userId uint32) toolResult 
 	return toolErr("storage is not configured")
 }
 
-func (h *Handler) toolGenerateMusic(ctx context.Context, args json.RawMessage, userId uint32, provider comdom.ProviderType) toolResult {
+func (h *Handler) toolGenerateMusic(ctx context.Context, args json.RawMessage, userId uint64, provider comdom.ProviderType) toolResult {
 	var p struct {
 		Prompt            string                           `json:"prompt"`
 		CompositionPlan   *elevenlabs.MusicCompositionPlan `json:"composition_plan"`
@@ -467,7 +626,7 @@ func toMusicCompositionPlan(plan *comdom.MusicCompositionPlan) *elevenlabs.Music
 	return &elevenlabs.MusicCompositionPlan{Chunks: chunks}
 }
 
-func (h *Handler) toolCalendarCreate(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolCalendarCreate(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p google_services.CreateEventParams
 	if err := json.Unmarshal(args, &p); err != nil {
 		return toolErr("invalid params: " + err.Error())
@@ -480,7 +639,7 @@ func (h *Handler) toolCalendarCreate(ctx context.Context, args json.RawMessage, 
 	return toolOK(result)
 }
 
-func (h *Handler) toolCalendarList(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolCalendarList(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p google_services.ListEventsParams
 	if err := json.Unmarshal(args, &p); err != nil {
 		return toolErr("invalid params: " + err.Error())
@@ -496,7 +655,7 @@ func (h *Handler) toolCalendarList(ctx context.Context, args json.RawMessage, us
 	return toolOK(result)
 }
 
-func (h *Handler) toolCalendarDelete(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolCalendarDelete(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p google_services.DeleteEventParams
 	if err := json.Unmarshal(args, &p); err != nil {
 		return toolErr("invalid params: " + err.Error())
@@ -509,7 +668,7 @@ func (h *Handler) toolCalendarDelete(ctx context.Context, args json.RawMessage, 
 	return toolOK(result)
 }
 
-func (h *Handler) toolCalendarGet(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolCalendarGet(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p google_services.GetEventParams
 	if err := json.Unmarshal(args, &p); err != nil {
 		return toolErr("invalid params: " + err.Error())
@@ -522,7 +681,7 @@ func (h *Handler) toolCalendarGet(ctx context.Context, args json.RawMessage, use
 	return toolOK(result)
 }
 
-func (h *Handler) toolSheetsRead(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolSheetsRead(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p google_services.ReadRangeParams
 	if err := json.Unmarshal(args, &p); err != nil {
 		return toolErr("invalid params: " + err.Error())
@@ -535,7 +694,7 @@ func (h *Handler) toolSheetsRead(ctx context.Context, args json.RawMessage, user
 	return toolOK(result)
 }
 
-func (h *Handler) toolSheetsWrite(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolSheetsWrite(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p google_services.WriteRangeParams
 	if err := json.Unmarshal(args, &p); err != nil {
 		return toolErr("invalid params: " + err.Error())
@@ -548,7 +707,7 @@ func (h *Handler) toolSheetsWrite(ctx context.Context, args json.RawMessage, use
 	return toolOK(result)
 }
 
-func (h *Handler) toolSheetsAppend(ctx context.Context, args json.RawMessage, userId uint32) toolResult {
+func (h *Handler) toolSheetsAppend(ctx context.Context, args json.RawMessage, userId uint64) toolResult {
 	var p google_services.AppendRangeParams
 	if err := json.Unmarshal(args, &p); err != nil {
 		return toolErr("invalid params: " + err.Error())
@@ -565,7 +724,7 @@ func (h *Handler) toolSheetsAppend(ctx context.Context, args json.RawMessage, us
 
 // getUserModel возвращает модель пользователя для указанного провайдера.
 // Возвращает nil если модель не найдена или произошла ошибка.
-func (h *Handler) getUserModel(userId uint32, provider comdom.ProviderType) *comdom.UniversalModelData {
+func (h *Handler) getUserModel(userId uint64, provider comdom.ProviderType) *comdom.UniversalModelData {
 	models, err := h.mod.GetUserModels(userId)
 	if err != nil {
 		logger.Error("MCP getUserModel: %v", err, userId)
@@ -582,7 +741,7 @@ func (h *Handler) getUserModel(userId uint32, provider comdom.ProviderType) *com
 // buildSystemPromptHint формирует компактные инструкции по использованию инструментов
 // на основе флагов модели пользователя. Не содержит артефактов text-mode —
 // используется одинаково для text и Realtime (голосового) режимов.
-func (h *Handler) buildSystemPromptHint(userId uint32, provider comdom.ProviderType) string {
+func (h *Handler) buildSystemPromptHint(userId uint64, provider comdom.ProviderType) string {
 	m := h.getUserModel(userId, provider)
 
 	var parts []string

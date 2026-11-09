@@ -167,7 +167,7 @@ func (w *Web) ServiceEventWSS(c *gin.Context) {
 	proxyWebSocket(c, fmt.Sprintf("%s/lead/ws/events?uid=%d", config.LeadServiceWS, userId), userId)
 }
 
-func proxyWebSocket(c *gin.Context, targetURL string, userId uint32) {
+func proxyWebSocket(c *gin.Context, targetURL string, userId uint64) {
 	// Устанавливаем WebSocket с клиентом
 	clientConn, err := upgradeWebSocket(c)
 	if err != nil {
@@ -411,7 +411,7 @@ func (w *Web) proxyServicesRequest(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	userIdValue := userId.(uint32)
+	userIdValue := userId.(uint64)
 
 	// Gin stores the wildcard part without the /v1/services/lead prefix.
 	path := c.Param("path")

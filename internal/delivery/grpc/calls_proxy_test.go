@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
@@ -28,9 +28,9 @@ type mockDemoChecker struct {
 	err    error
 }
 
-func (m mockDemoChecker) CheckDemo(uint32) (bool, error) { return m.isDemo, m.err }
+func (m mockDemoChecker) CheckDemo(uint64) (bool, error) { return m.isDemo, m.err }
 
-func (m mockActiveModelProvider) GetActiveUserModel(uint32) (*comdom.UniversalModelData, error) {
+func (m mockActiveModelProvider) GetActiveUserModel(uint64) (*comdom.UniversalModelData, error) {
 	return m.model, nil
 }
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ikermy/air-common/pkg/crypto"
+	"github.com/ikermy/air-common/v2/pkg/crypto"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -16,7 +16,7 @@ import (
 // EncryptUserAPIKeysWSS шифрует все plaintext API-ключи пользователя его MasterKey ($mk$).
 // Вызывается один раз из CreateMasterKeyWSS сразу после генерации MasterKey.
 // masterKey — расшифрованный MasterKey из Exam.masterKeyCache.
-func (i *Implementation) EncryptUserAPIKeysWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptUserAPIKeysWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 

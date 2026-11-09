@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -145,7 +145,7 @@ func (w *Web) authAllowMiddleware() gin.HandlerFunc {
 // getUserID извлекает userId из контекста Gin.
 // Если userId не найден — записывает 401 Unauthorized и возвращает (0, false).
 // Используется во всех хендлерах вместо дублирующегося boilerplate.
-func getUserID(c *gin.Context) (uint32, bool) {
+func getUserID(c *gin.Context) (uint64, bool) {
 	val, exists := c.Get("userId")
 	if !exists {
 		// Для обратной совместимости с CRM-мидлварью пробуем "user_id"
@@ -155,7 +155,7 @@ func getUserID(c *gin.Context) (uint32, bool) {
 			return 0, false
 		}
 	}
-	userId, ok := val.(uint32)
+	userId, ok := val.(uint64)
 	if !ok || userId == 0 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return 0, false
@@ -240,7 +240,7 @@ func (w *Web) devOnlyMiddleware() gin.HandlerFunc {
 }
 
 // SetUserAuth устанавливает userId и respId в контексте после верификации токена из POST/DELETE body
-func (w *Web) SetUserAuth(c *gin.Context, token string) (uint32, error) {
+func (w *Web) SetUserAuth(c *gin.Context, token string) (uint64, error) {
 	userId, respId, err := w.exam.VerifyAccessToken(token)
 	if err != nil {
 		logger.Error("'SetUserAuth' ошибка парсинга токена: %v", err)

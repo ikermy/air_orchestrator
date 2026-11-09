@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ikermy/air-common/pkg/comdom"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
-func (i *Implementation) FastCheckActiveUserModel(userID uint32) (bool, error) {
+func (i *Implementation) FastCheckActiveUserModel(userID uint64) (bool, error) {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -42,7 +42,7 @@ func (i *Implementation) FastCheckActiveUserModel(userID uint32) (bool, error) {
 
 // Deprecated: используйте DeleteUserFile вместо этого.
 // DeleteFileFromUserGPT удаляет файл пользователя по ID.
-func (i *Implementation) DeleteFileFromUserGPT(userId uint32, fileID string) error {
+func (i *Implementation) DeleteFileFromUserGPT(userId uint64, fileID string) error {
 	// Проверяем входные значения
 	if fileID == "" {
 		return fmt.Errorf("получены некорректное значение: fileID пуст")
@@ -155,7 +155,7 @@ func (i *Implementation) DeleteFileFromUserGPT(userId uint32, fileID string) err
 	return nil
 }
 
-func (i *Implementation) AddFileFromUserGPT(userId uint32, fileID, fileName string) error {
+func (i *Implementation) AddFileFromUserGPT(userId uint64, fileID, fileName string) error {
 	// Дочерний контекст с тайм-аутом на операцию
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()

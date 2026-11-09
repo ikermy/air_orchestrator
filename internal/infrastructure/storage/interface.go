@@ -45,12 +45,12 @@ type ListResult struct {
 
 // StorageResolver decides which Storage to use for a given user.
 type StorageResolver interface {
-	Resolve(ctx context.Context, userID uint32) (Storage, error)
+	Resolve(ctx context.Context, userID uint64) (Storage, error)
 }
 
 // StorageSessionService issues temporary credentials / sessions for frontend.
 //type StorageSessionService interface {
-//	CreateSession(ctx context.Context, userID uint32, ttl time.Duration) (StorageSession, error)
+//	CreateSession(ctx context.Context, userID uint64, ttl time.Duration) (StorageSession, error)
 //}
 
 type StorageSession struct {
@@ -71,7 +71,7 @@ const (
 )
 
 type BackendConfig struct {
-	UserID                                   uint32
+	UserID uint64
 	Type                                     BackendType
 	Endpoint, Bucket, Region                 string
 	AccessKeyCiphertext, SecretKeyCiphertext string

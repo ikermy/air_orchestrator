@@ -142,7 +142,7 @@ func (w *Web) DeleteChannel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
-func (w *Web) disableChannels(userId uint32, channel string) error {
+func (w *Web) disableChannels(userId uint64, channel string) error {
 	var url string
 	switch channel {
 	case "tgbot":
@@ -369,7 +369,7 @@ func (w *Web) RestartChannels(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	userId := uid.(uint32)
+	userId := uid.(uint64)
 
 	if userId == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid userId"})
@@ -390,7 +390,7 @@ func (w *Web) RestartChannels(c *gin.Context) {
 	w.RestartActiveServicesWSS(conn, userId)
 }
 
-func (w *Web) RestartActiveServicesWSS(conn *websocket.Conn, userID uint32) {
+func (w *Web) RestartActiveServicesWSS(conn *websocket.Conn, userID uint64) {
 	// Создаем callback функцию для отправки сообщений
 	progressCallback := func(message string) {
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
@@ -426,7 +426,7 @@ func (w *Web) RestartActiveServicesWSS(conn *websocket.Conn, userID uint32) {
 	}
 }
 
-func (w *Web) restartChannel(channel string, userId uint32, progressCallback func(string)) error {
+func (w *Web) restartChannel(channel string, userId uint64, progressCallback func(string)) error {
 	var url, realName string
 	switch channel {
 	case "tgbot":
@@ -476,7 +476,7 @@ func (w *Web) restartChannel(channel string, userId uint32, progressCallback fun
 	return nil
 }
 
-func (w *Web) stopChannel(channel string, userId uint32, start bool) {
+func (w *Web) stopChannel(channel string, userId uint64, start bool) {
 	metod := "enable"
 	if !start {
 		metod = "disable"

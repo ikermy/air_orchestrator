@@ -28,7 +28,7 @@ const (
 
 type MigrationRecord struct {
 	ID                      uint64
-	UserID                  uint32
+	UserID uint64
 	State                   MigrationState
 	Copied, Verified, Total int
 	Deleted                 int
@@ -38,12 +38,12 @@ type MigrationRecord struct {
 }
 
 type MigrationStore interface {
-	CreateMigration(context.Context, uint32, infra.BackendType, infra.BackendType) (MigrationRecord, error)
+	CreateMigration(context.Context, uint64, infra.BackendType, infra.BackendType) (MigrationRecord, error)
 	UpdateMigration(context.Context, MigrationRecord) error
 	GetMigration(context.Context, uint64) (MigrationRecord, error)
 	ListPendingMigrations(context.Context, int) ([]MigrationRecord, error)
 }
-type MigrationPairResolver func(context.Context, uint32) (infra.Storage, infra.Storage, error)
+type MigrationPairResolver func(context.Context, uint64) (infra.Storage, infra.Storage, error)
 
 // MigrationCanceller отменяет job, который ещё не выполняется.
 
@@ -63,7 +63,7 @@ type MigrationService struct {
 	resolver     infra.StorageResolver
 	mu           sync.Mutex
 	running      map[uint64]bool
-	cutover      func(context.Context, uint32) error
+	cutover      func(context.Context, uint64) error
 	locker       MigrationLocker
 	pairResolver MigrationPairResolver
 }
@@ -74,7 +74,7 @@ func NewMigrationService(store MigrationStore, resolver infra.StorageResolver) *
 	return &MigrationService{store: store, resolver: resolver, running: make(map[uint64]bool)}
 }
 
-func (s *MigrationService) SetCutover(fn func(context.Context, uint32) error) {
+func (s *MigrationService) SetCutover(fn func(context.Context, uint64) error) {
 	if s != nil {
 		s.cutover = fn
 	}
@@ -116,11 +116,11 @@ func (s *MigrationService) ProcessPending(ctx context.Context) error {
 
 // Start создаёт durable job и запускает миграцию. Backend’ы передаются явно,
 // чтобы переключение internal/external выполнялось после валидации конфигурации.
-func (s *MigrationService) Start(ctx context.Context, userID uint32, source, target infra.Storage) (MigrationRecord, error) {
+func (s *MigrationService) Start(ctx context.Context, userID uint64, source, target infra.Storage) (MigrationRecord, error) {
 	return s.StartWithTypes(ctx, userID, source, target, infra.BackendInternal, infra.BackendExternal)
 }
 
-func (s *MigrationService) StartWithTypes(ctx context.Context, userID uint32, source, target infra.Storage, sourceType, targetType infra.BackendType) (MigrationRecord, error) {
+func (s *MigrationService) StartWithTypes(ctx context.Context, userID uint64, source, target infra.Storage, sourceType, targetType infra.BackendType) (MigrationRecord, error) {
 	if s == nil || s.store == nil {
 		return MigrationRecord{}, fmt.Errorf("migration store is not configured")
 	}
@@ -136,7 +136,7 @@ func (s *MigrationService) StartWithTypes(ctx context.Context, userID uint32, so
 
 // CopyAndVerify выполняет только data-plane фазу. Source не удаляется и active
 // backend не переключается; это безопасная стадия перед DB commit.
-func (s *MigrationService) CopyAndVerify(ctx context.Context, id uint64, userID uint32, source, target infra.Storage) (MigrationRecord, error) {
+func (s *MigrationService) CopyAndVerify(ctx context.Context, id uint64, userID uint64, source, target infra.Storage) (MigrationRecord, error) {
 	if s == nil || source == nil || target == nil || userID == 0 {
 		return MigrationRecord{}, fmt.Errorf("invalid migration")
 	}
@@ -189,7 +189,7 @@ func (s *MigrationService) CopyAndVerify(ctx context.Context, id uint64, userID 
 // Run выполняет миграцию в безопасном порядке: copy, verify, cutover и только
 // затем cleanup source. Прогресс и manifest ключей сохраняются после каждого
 // объекта, поэтому job можно продолжить после сбоя или перезапуска процесса.
-func (s *MigrationService) Run(ctx context.Context, id uint64, userID uint32, source, target infra.Storage) error {
+func (s *MigrationService) Run(ctx context.Context, id uint64, userID uint64, source, target infra.Storage) error {
 	if s == nil || source == nil || target == nil || userID == 0 {
 		return fmt.Errorf("invalid migration")
 	}

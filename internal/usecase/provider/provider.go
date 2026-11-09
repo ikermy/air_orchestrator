@@ -5,15 +5,15 @@ import (
 	"air_orchestrator/internal/repository"
 	"fmt"
 
-	"github.com/ikermy/air-common/pkg/comdom"
-	"github.com/ikermy/air-common/pkg/model"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/model"
 )
 
 // Store — интерфейс репозитория для ProviderUseCase (ISP).
 type Store interface {
 	repository.MasterKeyRepository
-	GetActiveProvider(userID uint32) (comdom.ProviderType, error)
-	SetUserAPIKey(userID uint32, provider comdom.ProviderType, key string) error
+	GetActiveProvider(userID uint64) (comdom.ProviderType, error)
+	SetUserAPIKey(userID uint64, provider comdom.ProviderType, key string) error
 }
 
 // ProviderUseCase содержит бизнес-логику управления провайдерами и API-ключами.
@@ -34,7 +34,7 @@ func New(store Store, mod *model.Router, exam service.SecurityService) *Provider
 
 // RevokeUserAPIKey отзывает API-ключ провайдера.
 // Возвращает needRestart=true, если отозванный провайдер был активным.
-func (uc *ProviderUseCase) RevokeUserAPIKey(userID uint32, provider comdom.ProviderType) (bool, error) {
+func (uc *ProviderUseCase) RevokeUserAPIKey(userID uint64, provider comdom.ProviderType) (bool, error) {
 	activeProv, _ := uc.store.GetActiveProvider(userID)
 
 	err := uc.mod.RevokeUserAPIKey(userID, provider)
@@ -48,7 +48,7 @@ func (uc *ProviderUseCase) RevokeUserAPIKey(userID uint32, provider comdom.Provi
 
 // SetUserAPIKey устанавливает API-ключ провайдера.
 // Выполняет проверки состояния MasterKey перед сохранением.
-func (uc *ProviderUseCase) SetUserAPIKey(userID uint32, provider comdom.ProviderType, apiKey string) (bool, error) {
+func (uc *ProviderUseCase) SetUserAPIKey(userID uint64, provider comdom.ProviderType, apiKey string) (bool, error) {
 	// Проверяем наличие MasterKey в кэше.
 	_, masterKeyInCache := uc.exam.GetMasterKey(userID)
 	if !masterKeyInCache {

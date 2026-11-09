@@ -15,6 +15,8 @@ import (
 	"air_orchestrator/internal/usecase/session"
 	storageusecase "air_orchestrator/internal/usecase/storage"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,8 +27,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air-common/pkg/comdom"
-	"github.com/ikermy/air-common/pkg/model"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/model"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 	"golang.org/x/time/rate"
 )
@@ -40,22 +42,22 @@ type SMTP = service.MailerService
 
 // EventSender — отправка событий frontend-у через сокеты/каналы.
 type EventSender interface {
-	SendStorageEvent(userID uint32, event string) error
+	SendStorageEvent(userID uint64, event string) error
 }
 
 // ─── Интерфейс use case MasterKey ─────────────────────────────────────────────
 
 type MasterKeyUC interface {
-	CreateMasterKey(userID uint32, respID uint64, encPass string, progress func(string)) (string, error)
-	VerifyPassword(userID uint32, respID uint64, encPass string) error
-	RewrapOrReset(userID uint32, respID uint64, rawMK string, newPass string) error
-	GetMasterKeyData(userID uint32) (encMK string, wrapSalt string, hasMK bool, err error)
+	CreateMasterKey(userID uint64, respID uint64, encPass string, progress func(string)) (string, error)
+	VerifyPassword(userID uint64, respID uint64, encPass string) error
+	RewrapOrReset(userID uint64, respID uint64, rawMK string, newPass string) error
+	GetMasterKeyData(userID uint64) (encMK string, wrapSalt string, hasMK bool, err error)
 }
 
 // ─── Интерфейс use case Admin ─────────────────────────────────────────────────
 
 type AdminUC interface {
-	IsDevUser(userID uint32) (bool, error)
+	IsDevUser(userID uint64) (bool, error)
 	GetConfigs(ctx context.Context, keys []string) (map[string]string, error)
 	SetConfigs(ctx context.Context, kvs map[string]string) error
 	GetAllConfigs(ctx context.Context) (map[string]string, error)
@@ -67,22 +69,22 @@ type AdminUC interface {
 // AuthUC — интерфейс use case аутентификации.
 // Delivery зависит от этого интерфейса, а не от конкретного *auth.AuthUseCase.
 type AuthUC interface {
-	CheckEmail(mail string) (uint32, string, error)
+	CheckEmail(mail string) (uint64, string, error)
 	Register(input authuc.RegisterInput) (*authuc.RegisterResult, error)
 	Authenticate(ctx context.Context, input authuc.LoginInput) (*authuc.LoginResult, error)
-	MigrateLegacyUser(userID uint32, password, mail string) error
-	LoadMasterKeyIfExists(userID uint32, password string) (bool, error)
+	MigrateLegacyUser(userID uint64, password, mail string) error
+	LoadMasterKeyIfExists(userID uint64, password string) (bool, error)
 	RequestPasswordReset(mail string) (token string, found bool, err error)
-	ResetPassword(userID uint32, input authuc.ResetPasswordInput) error
-	ConfirmEmail(tokenString string) (userID uint32, email string, err error)
+	ResetPassword(userID uint64, input authuc.ResetPasswordInput) error
+	ConfirmEmail(tokenString string) (userID uint64, email string, err error)
 }
 
 // ─── Интерфейс use case Provider ──────────────────────────────────────────────
 
 // ProviderUC — интерфейс use case управления провайдерами и API-ключами.
 type ProviderUC interface {
-	RevokeUserAPIKey(userID uint32, provider comdom.ProviderType) (needRestart bool, err error)
-	SetUserAPIKey(userID uint32, provider comdom.ProviderType, apiKey string) (needRestart bool, err error)
+	RevokeUserAPIKey(userID uint64, provider comdom.ProviderType) (needRestart bool, err error)
+	SetUserAPIKey(userID uint64, provider comdom.ProviderType, apiKey string) (needRestart bool, err error)
 }
 
 // ─── Интерфейс use case TestAPI ──────────────────────────────────────────────
@@ -90,15 +92,15 @@ type ProviderUC interface {
 // TestAPI — интерфейс use case тестовых AI-сессий.
 // Delivery зависит от этого интерфейса, а не от конкретного *session.TestAPI.
 type TestAPI interface {
-	StartSession(ctx context.Context, userId uint32, respId uint64, provider comdom.ProviderType) (*session.TestSession, *comdom.UniversalModelData, error)
-	SendMessage(userId uint32, respId uint64, msg model.Message) error
-	GetChannel(userId uint32, respId uint64) (*model.Ch, error)
-	GetAnswer(ctx context.Context, userId uint32, respId uint64, timeout time.Duration) (*session.AnswerResponse, error)
-	StopSession(userId uint32, respId uint64) error
-	CleanupWebSocketSession(userId uint32, respId uint64) error
-	StartRealtimeSession(userId uint32, respId uint64, treadId uint64) (*model.RealtimeChannels, error)
-	StopRealtimeSession(userId uint32, respId uint64)
-	SendRealtimeAudio(userId uint32, respId uint64, pcm16 []byte) error
+	StartSession(ctx context.Context, userId uint64, respId uint64, provider comdom.ProviderType) (*session.TestSession, *comdom.UniversalModelData, error)
+	SendMessage(userId uint64, respId uint64, msg model.Message) error
+	GetChannel(userId uint64, respId uint64) (*model.Ch, error)
+	GetAnswer(ctx context.Context, userId uint64, respId uint64, timeout time.Duration) (*session.AnswerResponse, error)
+	StopSession(userId uint64, respId uint64) error
+	CleanupWebSocketSession(userId uint64, respId uint64) error
+	StartRealtimeSession(userId uint64, respId uint64, treadId uint64) (*model.RealtimeChannels, error)
+	StopRealtimeSession(userId uint64, respId uint64)
+	SendRealtimeAudio(userId uint64, respId uint64, pcm16 []byte) error
 }
 
 // ─── Интерфейс MCPHandler ─────────────────────────────────────────────────────
@@ -154,12 +156,17 @@ type Web struct {
 	evt EventSender
 	// Storage (factory, sessions, reservations, migrations)
 	storage *StorageServices
+	// Readiness
+	readyMu     sync.RWMutex
+	readyChecks []func(context.Context) error
 	// Rate limiting
 	limiterMu sync.Mutex
 	limiters  map[uint64]*struct {
 		l    *rate.Limiter
 		seen time.Time
 	}
+	// HTTP-сервер (для graceful shutdown).
+	srv *http.Server
 	// Временное состояние TOTP
 	totpPending      sync.Map
 	totpSetupPending sync.Map
@@ -247,7 +254,10 @@ func (w *Web) Close() error {
 	w.cancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	srv := &http.Server{Addr: ":8080", Handler: w.Gin}
+	srv := w.srv
+	if srv == nil {
+		srv = &http.Server{Addr: ":8080", Handler: w.Gin}
+	}
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("Ошибка при завершении HTTP сервера: %v", err)
 		return err
@@ -303,7 +313,10 @@ func (w *Web) Handler() error {
 
 	// ── Глобальные middleware ─────────────────────────────────────────────────
 	w.Gin.Use(metrics.PrometheusMiddleware())
+	w.Gin.Use(TracingMiddleware())
 	w.Gin.GET("/metrics", metrics.Handler())
+	w.Gin.GET("/healthz", w.Healthz)
+	w.Gin.GET("/readyz", w.Readyz)
 	if w.profiler != nil {
 		w.Gin.Use(profiler.HTTPTracingMiddleware(1 * time.Second))
 		logger.Info("HTTP трассировка включена (порог: 1s)")
@@ -360,22 +373,88 @@ func (w *Web) Handler() error {
 	// Внутренние маршруты только для air_shared сети между контейнерами
 	// закрыты снаружи на уровне Envoy вернёт 403
 	internal := w.Gin.Group("/int")
+	internal.Use(w.mtlsMiddleware())
 	w.mcpRoutes(internal)
 	w.intNotificationsRoutes(internal)
 
 	// ── Запуск сервера ─────────────────────────────────────────────────────────
-	if isRunningInDocker() {
-		if err := w.Gin.Run(":8080"); err != nil {
-			return fmt.Errorf("ошибка запуска web сервера air_orchestrator: %w", err)
+	addr := ":8080"
+	certFile, keyFile := config.TLSCertFile(), config.TLSKeyFile()
+	if !isRunningInDocker() {
+		// Локальная разработка без докера: исторически порт 443 и localhost.pem.
+		addr = ":443"
+		if certFile == "" {
+			certFile = "localhost.pem"
 		}
-	} else {
-		// Запуск сервера с SSL и локальным сертификатом в режиме разработки без докера
-		if err := w.Gin.RunTLS(":443", "localhost.pem", "localhost-key.pem"); err != nil {
-			return fmt.Errorf("ошибка запуска WEB сервера air_orchestrator в режиме локальной разаработки: %e", err)
+		if keyFile == "" {
+			keyFile = "localhost-key.pem"
 		}
 	}
+	if config.MTLSRequired() && (certFile == "" || keyFile == "") {
+		return fmt.Errorf("MTLS_REQUIRED=true, но TLS_CERT_FILE/TLS_KEY_FILE не заданы")
+	}
 
+	tlsCfg, err := buildTLSConfig()
+	if err != nil {
+		return err
+	}
+
+	w.srv = &http.Server{Addr: addr, Handler: w.Gin, TLSConfig: tlsCfg}
+	if certFile != "" && keyFile != "" {
+		if err := w.srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+			return fmt.Errorf("ошибка запуска web сервера air_orchestrator (TLS): %w", err)
+		}
+		return nil
+	}
+	if err := w.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("ошибка запуска web сервера air_orchestrator: %w", err)
+	}
 	return nil
+}
+
+// buildTLSConfig собирает TLS-конфигурацию. Если задан TLS_CA_CERT_FILE,
+// клиентские сертификаты запрашиваются и проверяются; middleware на /int/*
+// требует их наличия при MTLS_REQUIRED=true.
+func buildTLSConfig() (*tls.Config, error) {
+	caFile := config.TLSCACertFile()
+	required := config.MTLSRequired()
+	if caFile == "" {
+		if required {
+			return nil, fmt.Errorf("MTLS_REQUIRED=true, но TLS_CA_CERT_FILE не задан")
+		}
+		return &tls.Config{MinVersion: tls.VersionTLS12}, nil
+	}
+
+	pem, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("чтение TLS_CA_CERT_FILE: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("TLS_CA_CERT_FILE не содержит валидных сертификатов")
+	}
+
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ClientCAs:  pool,
+		ClientAuth: tls.VerifyClientCertIfGiven,
+	}, nil
+}
+
+// mtlsMiddleware требует проверенный клиентский сертификат на /int/*,
+// если включён MTLS_REQUIRED. Публичные маршруты не затрагиваются.
+func (w *Web) mtlsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !config.MTLSRequired() {
+			c.Next()
+			return
+		}
+		if c.Request.TLS == nil || len(c.Request.TLS.VerifiedChains) == 0 {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "mTLS client certificate required"})
+			return
+		}
+		c.Next()
+	}
 }
 
 func (w *Web) storageRoutes(v1 *gin.RouterGroup) {

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 )
 
 // ServiceList возвращает список типов сервисов, подключённых к пользователю.
-func (i *Implementation) ServiceList(userId uint32) ([]string, error) {
+func (i *Implementation) ServiceList(userId uint64) ([]string, error) {
 	if userId == 0 {
 		return nil, fmt.Errorf("получен некорректный userId")
 	}
@@ -46,7 +46,7 @@ func (i *Implementation) ServiceList(userId uint32) ([]string, error) {
 }
 
 // AddService добавляет тип сервиса пользователю (игнорирует дубликаты).
-func (i *Implementation) AddService(userId uint32, serviceType string) error {
+func (i *Implementation) AddService(userId uint64, serviceType string) error {
 	if userId == 0 || serviceType == "" {
 		return fmt.Errorf("получены некорректные значения")
 	}
@@ -70,7 +70,7 @@ func (i *Implementation) AddService(userId uint32, serviceType string) error {
 }
 
 // DeleteService удаляет тип сервиса у пользователя.
-func (i *Implementation) DeleteService(userId uint32, serviceType string) error {
+func (i *Implementation) DeleteService(userId uint64, serviceType string) error {
 	if userId == 0 || serviceType == "" {
 		return fmt.Errorf("получены некорректные значения")
 	}

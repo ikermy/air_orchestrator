@@ -89,7 +89,7 @@ func (w *Web) GoogleOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	var userID uint32
+	var userID uint64
 	_, err := fmt.Sscanf(state, "%d", &userID)
 	if err != nil {
 		logger.Error("'GoogleOAuthCallback' Ошибка парсинга state: %v", err)

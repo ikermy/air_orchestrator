@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 )
 
 // GetUsersWithGoogleToken возвращает список userId всех пользователей,
 // у которых есть активная запись в google_oauth_tokens.
-func (i *Implementation) GetUsersWithGoogleToken() ([]uint32, error) {
+func (i *Implementation) GetUsersWithGoogleToken() ([]uint64, error) {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -30,9 +30,9 @@ func (i *Implementation) GetUsersWithGoogleToken() ([]uint32, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var users []uint32
+	var users []uint64
 	for rows.Next() {
-		var uid uint32
+		var uid uint64
 		if err := rows.Scan(&uid); err != nil {
 			return nil, fmt.Errorf("ошибка сканирования userId: %w", err)
 		}
@@ -46,7 +46,7 @@ func (i *Implementation) GetUsersWithGoogleToken() ([]uint32, error) {
 
 // GetMigratedUsersEmails возвращает зашифрованные email всех мигрированных пользователей.
 func (i *Implementation) GetMigratedUsersEmails() ([]struct {
-	UserId   uint32
+	UserId uint64
 	EncEmail string
 }, error) {
 	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
@@ -60,12 +60,12 @@ func (i *Implementation) GetMigratedUsersEmails() ([]struct {
 	defer func() { _ = rows.Close() }()
 
 	var result []struct {
-		UserId   uint32
+		UserId uint64
 		EncEmail string
 	}
 	for rows.Next() {
 		var item struct {
-			UserId   uint32
+			UserId uint64
 			EncEmail string
 		}
 		if err := rows.Scan(&item.UserId, &item.EncEmail); err != nil {
@@ -77,7 +77,7 @@ func (i *Implementation) GetMigratedUsersEmails() ([]struct {
 }
 
 // UsersWithoutSubscription находит пользователей у которых истекла
-func (i *Implementation) UsersWithoutSubscription() ([]uint32, error) {
+func (i *Implementation) UsersWithoutSubscription() ([]uint64, error) {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -95,9 +95,9 @@ WHERE u.RoleId = 2 AND a.Disabled = 0;
 	}
 	defer func() { _ = rows.Close() }()
 
-	var userIds []uint32
+	var userIds []uint64
 	for rows.Next() {
-		var userId uint32
+		var userId uint64
 		if err := rows.Scan(&userId); err != nil {
 			return nil, fmt.Errorf("ошибка сканирования userId: %w", err)
 		}
@@ -110,7 +110,7 @@ WHERE u.RoleId = 2 AND a.Disabled = 0;
 	return userIds, nil
 }
 
-func (i *Implementation) SetUsersSubscriptionNotified(users []uint32) error {
+func (i *Implementation) SetUsersSubscriptionNotified(users []uint64) error {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 

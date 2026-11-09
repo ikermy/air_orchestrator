@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/ikermy/air-common/pkg/rpc/proto"
+	"github.com/ikermy/air-common/v2/pkg/rpc/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // Claims структура для хранения данных в токене jwt Widget
 type Claims struct {
-	UserId uint32 `json:"userId"`
+	UserId uint64 `json:"userId"`
 	ReapId uint64 `json:"respId"`
 	Origin string `json:"origin"`
 	JTI    string `json:"jti"`
@@ -27,7 +27,7 @@ type Claims struct {
 }
 
 type WidgetCodeClaims struct {
-	UserID       uint32   `json:"uid"`
+	UserID uint64   `json:"uid"`
 	ExamKey      string   `json:"examKey"`
 	AllowedUrls  []string `json:"allowedUrls"`
 	NeverExpires bool     `json:"neverExpires"`
@@ -36,7 +36,7 @@ type WidgetCodeClaims struct {
 }
 
 func (e *Exam) WidgetNewToken(
-	userID uint32,
+	userID uint64,
 	respID uint64,
 	origin string,
 	expired time.Duration,

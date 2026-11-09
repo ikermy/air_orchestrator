@@ -51,7 +51,7 @@ func (w *Web) proxyAvitoRequest(c *gin.Context) {
 
 	// Если в контексте есть userId (установлен middleware), добавляем uid
 	if userId, exists := c.Get("userId"); exists {
-		uid := userId.(uint32)
+		uid := userId.(uint64)
 		queryParams.Set("uid", fmt.Sprintf("%d", uid))
 	}
 

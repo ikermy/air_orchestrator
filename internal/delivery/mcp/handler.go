@@ -4,25 +4,36 @@ package mcp
 import (
 	storageusecase "air_orchestrator/internal/usecase/storage"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air-common/pkg/comdb"
-	"github.com/ikermy/air-common/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/comdb"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/mcpsession"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
+
+var tracer = otel.Tracer("air_orchestrator/mcp")
 
 // Store — интерфейс к БД для MCP-хендлера.
 // Объединяет comdb.Exterior (google_services) и AppConfigRepository (чтение настроек).
 type Store interface {
 	comdb.Exterior
 	GetAppConfig(ctx context.Context, key string) (string, error)
+	UserOwnsResponder(userID uint64, responderID uint64) (bool, error)
+	WriteAuditLog(ctx context.Context, userID uint64, action string, details json.RawMessage) error
 }
 
 // ModelStore — интерфейс к хранилищу моделей пользователей.
 type ModelStore interface {
-	GetUserModels(userId uint32) ([]comdom.UniversalModelData, error)
+	GetUserModels(userId uint64) ([]comdom.UniversalModelData, error)
 }
 
 // LeadTargetFn — тип колбэка для вызова Meta-сервиса lead/target.
@@ -31,12 +42,21 @@ type LeadTargetFn func(ctx context.Context, respId int64) error
 
 // Handler — MCP-сервер.
 type Handler struct {
-	store        Store
-	mod          ModelStore
-	ctx          context.Context
-	cancel       context.CancelFunc
-	leadTargetFn LeadTargetFn // опционально; если nil — используется leadTargetClient напрямую
-	files        *storageusecase.Service
+	store         Store
+	mod           ModelStore
+	ctx           context.Context
+	cancel        context.CancelFunc
+	leadTargetFn  LeadTargetFn // опционально; если nil — используется leadTargetClient напрямую
+	files         *storageusecase.Service
+	sessionSecret string
+	requireSigned bool
+	serviceKey    string
+
+	limiterMu sync.Mutex
+	limiters  map[string]*toolLimiterEntry
+
+	idemMu sync.Mutex
+	idem   map[string]idempotencyEntry
 }
 
 // New создаёт новый MCP-хендлер с собственным дочерним контекстом.
@@ -53,6 +73,47 @@ func New(parent context.Context, db Store, mod ModelStore, files ...*storageusec
 // Вызывается из app.go после создания web.web.
 func (h *Handler) SetLeadTargetFn(fn LeadTargetFn) {
 	h.leadTargetFn = fn
+}
+
+// SetSessionAuth настраивает проверку X-Session-ID.
+// secret включает проверку подписи для подписанных заголовков;
+// requireSigned запрещает legacy-формат "userId:provider".
+func (h *Handler) SetSessionAuth(secret string, requireSigned bool) {
+	h.sessionSecret = secret
+	h.requireSigned = requireSigned
+	if requireSigned && secret == "" {
+		logger.Error("MCP: MCP_REQUIRE_SIGNED_SESSION=true, но MCP_SESSION_SECRET пуст — запросы будут отклонены", 0)
+	}
+}
+
+// SetServiceAuth включает проверку заголовка X-Service-Key.
+// Пустой ключ отключает проверку.
+func (h *Handler) SetServiceAuth(key string) {
+	h.serviceKey = key
+}
+
+func (h *Handler) checkServiceKey(provided string) bool {
+	if h.serviceKey == "" {
+		return true
+	}
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(h.serviceKey)) == 1
+}
+
+// authenticate разбирает и, при необходимости, проверяет X-Session-ID.
+func (h *Handler) authenticate(header string) (uint64, comdom.ProviderType, error) {
+	if h.requireSigned {
+		if h.sessionSecret == "" {
+			return 0, 0, errors.New("server session secret is not configured")
+		}
+		if !mcpsession.IsSigned(header) {
+			return 0, 0, errors.New("signed session required")
+		}
+		return mcpsession.Parse(h.sessionSecret, header, time.Now())
+	}
+	if h.sessionSecret != "" && mcpsession.IsSigned(header) {
+		return mcpsession.Parse(h.sessionSecret, header, time.Now())
+	}
+	return ParseSessionID(header)
 }
 
 // Shutdown останавливает MCP-сервер, отменяя его контекст.
@@ -112,6 +173,20 @@ func (h *Handler) ServeHTTP(c *gin.Context) {
 
 	id := *req.ID
 
+	if !h.checkServiceKey(c.GetHeader("X-Service-Key")) {
+		c.JSON(http.StatusUnauthorized, rpcResponse{
+			JSONRPC: "2.0",
+			ID:      id,
+			Error:   &rpcError{Code: -32001, Message: "Unauthorized: invalid service key"},
+		})
+		return
+	}
+
+	ctx, span := tracer.Start(c.Request.Context(), "mcp.request")
+	defer span.End()
+	span.SetAttributes(attribute.String("mcp.method", req.Method))
+	c.Request = c.Request.WithContext(ctx)
+
 	// initialize не требует X-Session-ID
 	if req.Method == "initialize" {
 		c.JSON(http.StatusOK, rpcResponse{
@@ -133,7 +208,7 @@ func (h *Handler) ServeHTTP(c *gin.Context) {
 	}
 
 	// Все остальные методы требуют X-Session-ID
-	userId, provider, err := ParseSessionID(c.Request.Header.Get("X-Session-ID"))
+	userId, provider, err := h.authenticate(c.Request.Header.Get("X-Session-ID"))
 	if err != nil {
 		c.JSON(http.StatusOK, rpcResponse{
 			JSONRPC: "2.0",
@@ -147,7 +222,7 @@ func (h *Handler) ServeHTTP(c *gin.Context) {
 	case "tools/list":
 		tools, err := h.buildToolsList(userId, provider)
 		if err != nil {
-			logger.Error("MCP tools/list: %v", err, userId)
+			logger.ErrorCtx(ctx, "MCP tools/list: %v", err, userId)
 			c.JSON(http.StatusOK, rpcResponse{
 				JSONRPC: "2.0",
 				ID:      id,

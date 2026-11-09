@@ -75,7 +75,7 @@ func newStorageServices(d *db.DB, x *exam.Exam, redisCli *redis.Client) (*web.St
 
 	if migrationService != nil {
 		sf := storageFactory
-		migrationService.SetPairResolver(func(ctx context.Context, userID uint32) (storage.Storage, storage.Storage, error) {
+		migrationService.SetPairResolver(func(ctx context.Context, userID uint64) (storage.Storage, storage.Storage, error) {
 			cfg, cfgErr := d.StorageConfig(ctx, userID)
 			if cfgErr != nil {
 				return nil, nil, fmt.Errorf("failed to load config: %w", cfgErr)
@@ -97,7 +97,7 @@ func newStorageServices(d *db.DB, x *exam.Exam, redisCli *redis.Client) (*web.St
 			return source, target, nil
 		})
 
-		migrationService.SetCutover(func(ctx context.Context, userID uint32) error {
+		migrationService.SetCutover(func(ctx context.Context, userID uint64) error {
 			cfg, cfgErr := d.StorageConfig(ctx, userID)
 			if cfgErr != nil {
 				return cfgErr

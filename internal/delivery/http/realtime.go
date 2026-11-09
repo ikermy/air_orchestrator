@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/ikermy/air-common/pkg/model"
+	"github.com/ikermy/air-common/v2/pkg/model"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -306,7 +306,7 @@ type realtimeWAVRecorder struct {
 	sampleRate uint32
 }
 
-func newRealtimeWAVRecorder(userID uint32, respID uint64, sampleRate uint32) (*realtimeWAVRecorder, error) {
+func newRealtimeWAVRecorder(userID uint64, respID uint64, sampleRate uint32) (*realtimeWAVRecorder, error) {
 	dir := filepath.Join("realtime_audio", fmt.Sprintf("%d", userID))
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, err

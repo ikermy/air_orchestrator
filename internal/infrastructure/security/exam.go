@@ -78,7 +78,15 @@ type AssistToken struct {
 type AuthToken struct {
 	jwt.RegisteredClaims
 	RespId uint64 `json:"resp"`
-	UserId uint32 `json:"user"`
+	UserId uint64 `json:"user"`
+}
+
+// MailToken — типизированные claims письма подтверждения. uint64
+// декодируется без потери точности (Snowflake ID).
+type MailToken struct {
+	jwt.RegisteredClaims
+	Email  string `json:"email"`
+	UserID uint64 `json:"user"`
 }
 
 // LandingToken используется только для демо ассистентов
@@ -174,7 +182,7 @@ func (e *Exam) AddRegUser(respId uint64) (string, error) {
 }
 
 // GenerateAccessToken Генерация короткого и долгого access токенов для пользователя
-func (e *Exam) GenerateAccessToken(userId uint32, respId uint64) (sta, lta string, err error) {
+func (e *Exam) GenerateAccessToken(userId uint64, respId uint64) (sta, lta string, err error) {
 	// Создаем короткий токен (с обычным временем жизни)
 	shortClaims := AuthToken{
 		RespId: respId,
@@ -215,8 +223,9 @@ func (e *Exam) GenerateAccessToken(userId uint32, respId uint64) (sta, lta strin
 }
 
 // VerifyAccessToken проверяет любой JWT токен доступа (STA или LTA) и возвращает ID пользователя
-func (e *Exam) VerifyAccessToken(tokenString string) (uint32, uint64, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+func (e *Exam) VerifyAccessToken(tokenString string) (uint64, uint64, error) {
+	claims := &AuthToken{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("неподдерживаемый метод подписи: %v", token.Header["alg"])
 		}
@@ -231,28 +240,9 @@ func (e *Exam) VerifyAccessToken(tokenString string) (uint32, uint64, error) {
 		return 0, 0, fmt.Errorf("невалидный токен")
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return 0, 0, fmt.Errorf("невозможно получить claims из токена")
-	}
-
-	// Extract userId (as uint32)
-	var userId uint32
-	if userFloat, ok := claims["user"].(float64); ok {
-		userId = uint32(userFloat) // Safe conversion with potential data loss
-	} else {
-		return 0, 0, fmt.Errorf("невалидный формат userId в токене")
-	}
-
-	// Extract respId (as uint64)
-	var respId uint64
-	if respFloat, ok := claims["resp"].(float64); ok {
-		respId = uint64(respFloat)
-	} else {
-		return 0, 0, fmt.Errorf("невалидный формат respId в токене")
-	}
-
-	return userId, respId, nil
+	// Типизированные claims позволяют декодировать uint64 (Snowflake) без
+	// потери точности, в отличие от jwt.MapClaims (float64).
+	return claims.UserId, claims.RespId, nil
 }
 
 // BlacklistToken добавляет токен в Redis блэклист с TTL.
@@ -293,7 +283,7 @@ func (e *Exam) IsBlacklisted(ctx context.Context, token string) (bool, error) {
 }
 
 // ParseAuthToken парсит аутентификационный токен jwt
-func (e *Exam) ParseAuthToken(tokenString *string) (*uint32, *uint64, error) {
+func (e *Exam) ParseAuthToken(tokenString *string) (*uint64, *uint64, error) {
 	token, err := jwt.ParseWithClaims(*tokenString, &AuthToken{},
 		func(token *jwt.Token) (any, error) {
 			return e.sessionKey, nil
@@ -535,14 +525,16 @@ func (e *Exam) DecryptEmailInJSON(raw []byte, path string) ([]byte, error) {
 }
 
 // GetMailConfirmationToken GenerateConfirmationToken генерирует токен для подтверждения email
-func (e *Exam) GetMailConfirmationToken(userId uint32, email string) (string, error) {
-	// Создаем структуру данных для JWT токена
-	claims := jwt.MapClaims{
-		"email": email,
-		"user":  userId,
-		"exp":   time.Now().Add(config.MailTokenTTL * time.Hour).Unix(),
-		"iat":   time.Now().Unix(),
-		"jti":   fmt.Sprintf("%s-%d", email, time.Now().UnixNano()),
+func (e *Exam) GetMailConfirmationToken(userId uint64, email string) (string, error) {
+	// Типизированные claims: uint64 не теряет точность при декодировании.
+	claims := MailToken{
+		Email:  email,
+		UserID: userId,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(config.MailTokenTTL * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        fmt.Sprintf("%s-%d", email, time.Now().UnixNano()),
+		},
 	}
 
 	// Создаем токен с подписью
@@ -557,9 +549,10 @@ func (e *Exam) GetMailConfirmationToken(userId uint32, email string) (string, er
 }
 
 // ParseMailConfirmationToken ParseConfirmationToken проверяет токен подтверждения email и возвращает email
-func (e *Exam) ParseMailConfirmationToken(tokenString string) (uint32, string, error) {
-	// Парсим токен
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+func (e *Exam) ParseMailConfirmationToken(tokenString string) (uint64, string, error) {
+	// Парсим токен в типизированные claims (uint64 без потери точности)
+	claims := &MailToken{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		// Проверяем, что алгоритм подписи соответствует ожидаемому
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
@@ -578,28 +571,16 @@ func (e *Exam) ParseMailConfirmationToken(tokenString string) (uint32, string, e
 		return 0, "", fmt.Errorf("недействительный токен")
 	}
 
-	// Получаем claims из токена
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return 0, "", fmt.Errorf("не удалось получить claims из токена")
-	}
-
-	// Проверяем наличие email в токене
-	email, ok := claims["email"].(string)
-	if !ok || email == "" {
+	if claims.Email == "" {
 		return 0, "", fmt.Errorf("токен не содержит email")
 	}
-
-	// Проверяем наличие userId в токене
-	userIdFloat, ok := claims["user"].(float64)
-	if !ok {
+	if claims.UserID == 0 {
 		return 0, "", fmt.Errorf("токен не содержит userId")
 	}
 
-	userId := uint32(userIdFloat)
 	// JWT автоматически проверяет истечение срока действия (exp)
 
-	return userId, email, nil
+	return claims.UserID, claims.Email, nil
 }
 
 // ============================================================================
@@ -685,7 +666,7 @@ const masterKeyPBKDF2Iter = 100_000
 // GenerateAndWrapMasterKey генерирует новый 32-байтовый MasterKey,
 // оборачивает его паролем (PBKDF2 + AES-256-GCM) и кладёт в cache.
 // rawB64 возвращается клиенту ОДИН РАЗ — пользователь обязан его сохранить.
-func (e *Exam) GenerateAndWrapMasterKey(userId uint32, password string) (rawB64, encMK, wrapSalt string, err error) {
+func (e *Exam) GenerateAndWrapMasterKey(userId uint64, password string) (rawB64, encMK, wrapSalt string, err error) {
 	rawKey := make([]byte, 32)
 	if _, err = rand.Read(rawKey); err != nil {
 		return "", "", "", fmt.Errorf("ошибка генерации MasterKey: %w", err)
@@ -726,7 +707,7 @@ func (e *Exam) WrapMasterKey(rawB64, password string) (encMK, wrapSalt string, e
 // TODO cделать механизм уведомления сервисов о появлении MasterKey в cache
 // LoadMasterKey расшифровывает MasterKey из БД и кладёт в cache.
 // Вызывается после успешной авторизации (Autentificate / AuthTOTP).
-func (e *Exam) LoadMasterKey(userId uint32, password, encMK, wrapSaltB64 string) error {
+func (e *Exam) LoadMasterKey(userId uint64, password, encMK, wrapSaltB64 string) error {
 	wrapSaltBytes, err := base64.StdEncoding.DecodeString(wrapSaltB64)
 	if err != nil {
 		return fmt.Errorf("ошибка декодирования wrapSalt: %w", err)
@@ -781,7 +762,7 @@ func (e *Exam) LoadMasterKey(userId uint32, password, encMK, wrapSaltB64 string)
 // GetMasterKey возвращает MasterKey из cache.
 // Если (false) — ключ отсутствует (сервер перезапустился / пользователь ещё не логинился):
 // вызывающий код работает без шифрования данных.
-func (e *Exam) GetMasterKey(userId uint32) ([32]byte, bool) {
+func (e *Exam) GetMasterKey(userId uint64) ([32]byte, bool) {
 	val, ok := e.masterKeyCache.Load(userId)
 	if !ok {
 		return [32]byte{}, false
@@ -852,7 +833,7 @@ func (e *Exam) decryptMasterKeyFromRedis(encB64 string) ([32]byte, error) {
 }
 
 // saveMasterKeyToRedis шифрует MasterKey и сохраняет в Redis с TTL.
-func (e *Exam) saveMasterKeyToRedis(userId uint32, mk [32]byte) error {
+func (e *Exam) saveMasterKeyToRedis(userId uint64, mk [32]byte) error {
 	if e.redisCli == nil {
 		return fmt.Errorf("RedisClient не инициирован")
 	}
@@ -870,7 +851,7 @@ func (e *Exam) saveMasterKeyToRedis(userId uint32, mk [32]byte) error {
 	return nil
 }
 
-func (e *Exam) RefreshMasterKeyTTL(userId uint32) error {
+func (e *Exam) RefreshMasterKeyTTL(userId uint64) error {
 	if e.redisCli == nil {
 		return fmt.Errorf("RedisClient не инициирован")
 	}
@@ -915,17 +896,17 @@ func (e *Exam) LoadAllMasterKeysFromRedis(ctx context.Context) error {
 
 		data, getErr := e.redisCli.Get(ctx, key)
 		if getErr != nil {
-			logger.Warn("MasterKey: ошибка чтения из Redis: %v", getErr, uint32(userID))
+			logger.Warn("MasterKey: ошибка чтения из Redis: %v", getErr, uint64(userID))
 			continue
 		}
 
 		mk, decErr := e.decryptMasterKeyFromRedis(string(data))
 		if decErr != nil {
-			logger.Warn("MasterKey: ошибка расшифровки из Redis: %v", decErr, uint32(userID))
+			logger.Warn("MasterKey: ошибка расшифровки из Redis: %v", decErr, uint64(userID))
 			continue
 		}
 
-		e.masterKeyCache.Store(uint32(userID), mk)
+		e.masterKeyCache.Store(uint64(userID), mk)
 		loaded++
 	}
 

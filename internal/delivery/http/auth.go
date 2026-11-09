@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -516,7 +516,7 @@ func (w *Web) Login(c *gin.Context) {
 
 	// Тихая миграция legacy-хэша (SHA3 → bcrypt) в фоне
 	if result.IsLegacy {
-		go func(uid uint32, pass, mail string) {
+		go func(uid uint64, pass, mail string) {
 			if err := w.authUC.MigrateLegacyUser(uid, pass, mail); err != nil {
 				logger.Error("'Login' lazy migration: %v", err, uid)
 			}

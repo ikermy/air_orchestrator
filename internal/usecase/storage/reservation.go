@@ -16,19 +16,19 @@ type ReservationService struct {
 	cache   infra.ReservationCache
 	backend infra.Storage
 	quota   interface {
-		ReserveStorage(context.Context, uint32, int64) error
-		CommitStorage(context.Context, uint32, int64) error
-		ReleaseStorage(context.Context, uint32, int64) error
-		ListReservedUsers(context.Context) ([]uint32, error)
+		ReserveStorage(context.Context, uint64, int64) error
+		CommitStorage(context.Context, uint64, int64) error
+		ReleaseStorage(context.Context, uint64, int64) error
+		ListReservedUsers(context.Context) ([]uint64, error)
 	}
 	healthy bool
 }
 
 func NewReservationService(cache infra.ReservationCache, backend infra.Storage, quota interface {
-	ReserveStorage(context.Context, uint32, int64) error
-	CommitStorage(context.Context, uint32, int64) error
-	ReleaseStorage(context.Context, uint32, int64) error
-	ListReservedUsers(context.Context) ([]uint32, error)
+	ReserveStorage(context.Context, uint64, int64) error
+	CommitStorage(context.Context, uint64, int64) error
+	ReleaseStorage(context.Context, uint64, int64) error
+	ListReservedUsers(context.Context) ([]uint64, error)
 }) *ReservationService {
 	svc := &ReservationService{cache: cache, backend: backend, quota: quota}
 	svc.checkHealth(context.Background())
@@ -79,11 +79,11 @@ func (s *ReservationService) HealthCheck(ctx context.Context) bool {
 	return s.Healthy()
 }
 
-func (s *ReservationService) Reserve(ctx context.Context, userID uint32, objectKey string, size int64, ttl time.Duration) (reservationID string, idempotencyKey string, err error) {
+func (s *ReservationService) Reserve(ctx context.Context, userID uint64, objectKey string, size int64, ttl time.Duration) (reservationID string, idempotencyKey string, err error) {
 	return s.ReserveWithIdempotency(ctx, userID, objectKey, size, "", ttl)
 }
 
-func (s *ReservationService) ReserveWithIdempotency(ctx context.Context, userID uint32, objectKey string, size int64, requestedKey string, ttl time.Duration) (reservationID string, idempotencyKey string, err error) {
+func (s *ReservationService) ReserveWithIdempotency(ctx context.Context, userID uint64, objectKey string, size int64, requestedKey string, ttl time.Duration) (reservationID string, idempotencyKey string, err error) {
 	if s == nil || s.cache == nil || s.quota == nil {
 		return "", "", fmt.Errorf("reservation service is not configured")
 	}
@@ -208,7 +208,7 @@ func (s *ReservationService) Release(ctx context.Context, reservationID string) 
 	return nil
 }
 
-func (s *ReservationService) RecoverReservation(ctx context.Context, userID uint32, size int64) error {
+func (s *ReservationService) RecoverReservation(ctx context.Context, userID uint64, size int64) error {
 	if s == nil || s.quota == nil {
 		return fmt.Errorf("reservation service is not configured")
 	}
@@ -295,7 +295,7 @@ func (s *ReservationService) ReconcileFromMySQL(ctx context.Context) (int, error
 		return 0, fmt.Errorf("list reservation keys: %w", keysErr)
 	}
 
-	reservedUsers := make(map[uint32]bool)
+	reservedUsers := make(map[uint64]bool)
 	for _, k := range allKeys {
 		raw, getErr := s.cache.Get(ctx, k)
 		if getErr != nil {
@@ -316,7 +316,7 @@ func (s *ReservationService) ReconcileFromMySQL(ctx context.Context) (int, error
 			continue
 		}
 		if releaser, ok := s.quota.(interface {
-			ReleaseAllReservedStorage(context.Context, uint32) error
+			ReleaseAllReservedStorage(context.Context, uint64) error
 		}); ok {
 			if err := releaser.ReleaseAllReservedStorage(ctx, userID); err != nil {
 				continue
@@ -356,10 +356,10 @@ func (s *ReservationService) sweepTick(ctx context.Context) {
 		keys, keysErr := s.cache.Keys(ctx, "reservation:*")
 		if keysErr == nil {
 			type userPrefix struct {
-				userID uint32
+				userID uint64
 				prefix string
 			}
-			seen := make(map[uint32]bool)
+			seen := make(map[uint64]bool)
 			var users []userPrefix
 			for _, k := range keys {
 				raw, getErr := s.cache.Get(ctx, k)

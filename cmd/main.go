@@ -15,8 +15,9 @@ import (
 
 	"strings"
 
-	"github.com/ikermy/air-common/pkg/com"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/com"
+	"github.com/ikermy/air-common/v2/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/telemetry"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -49,6 +50,17 @@ func main() {
 	// Корневой контекст процесса, отменяется по сигналам ОС
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	// OpenTelemetry: включается только при заданном OTEL_EXPORTER_OTLP_ENDPOINT.
+	shutdownTracing, tracingEnabled, err := telemetry.Init(ctx, "air_orchestrator", com.Version)
+	if err != nil {
+		logger.Warn("OpenTelemetry: не удалось инициализировать трассировку: %v", err)
+		shutdownTracing = nil
+	} else if tracingEnabled {
+		logger.Info("OpenTelemetry: трассировка инициализирована")
+	} else {
+		logger.Debug("OpenTelemetry: endpoint не задан, трассировка отключена")
+	}
 
 	// ── APP_MASTER_KEY_FILE (обязателен) ────────────────────────────────────────
 	// Читается до всех проверок, включая rekey, так как требуется везде.
@@ -140,6 +152,15 @@ func main() {
 		if err := prof.Shutdown(); err != nil {
 			logger.Warn("Ошибка при завершении профилировщика: %v", err)
 		}
+	}
+
+	// Сброс буферов трассировки.
+	if shutdownTracing != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := shutdownTracing(shutdownCtx); err != nil {
+			logger.Warn("OpenTelemetry: ошибка shutdown: %v", err)
+		}
+		cancel()
 	}
 
 	logger.Infoln("Приложение air_orchestrator завершено")

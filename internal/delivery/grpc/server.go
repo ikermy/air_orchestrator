@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ikermy/air-common/pkg/rpc/proto"
+	"github.com/ikermy/air-common/v2/pkg/rpc/proto"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -35,13 +35,13 @@ import (
 // Implemented by *exam.Exam; injected into the gRPC server to avoid importing the
 // security package from the delivery layer.
 type ExamProvider interface {
-	GetMasterKey(userId uint32) ([32]byte, bool)
-	WidgetNewToken(userID uint32, respID uint64, origin string, expired time.Duration) (string, error)
+	GetMasterKey(userId uint64) ([32]byte, bool)
+	WidgetNewToken(userID uint64, respID uint64, origin string, expired time.Duration) (string, error)
 	WidgetParseToken(tokenString string) (*proto.WidgetTokenData, error)
 	WidgetNewCode(data *proto.WidgetCodeData, publicKey, privateKey string) (string, error)
 	WidgetParseCode(token, publicKey string) (*proto.WidgetCodeData, error)
 	WidgetParseExpiredToken(expiredTokenString string) (*proto.WidgetTokenData, error)
-	VerifyAccessToken(token string) (uint32, uint64, error)
+	VerifyAccessToken(token string) (uint64, uint64, error)
 }
 
 type widgetKeys struct {

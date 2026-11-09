@@ -1,0 +1,43 @@
+# Dev tracing stack: OTel Collector (tail sampling) -> Jaeger.
+# Services should set:
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+#   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+# Jaeger UI: http://localhost:16686
+name: air-tracing
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+    networks:
+      - monitoring_shared
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.0
+    container_name: otel_collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ../monitoring/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+    depends_on:
+      - jaeger
+    networks:
+      - air_shared
+      - monitoring_shared
+    restart: unless-stopped
+
+networks:
+  air_shared:
+    name: air_shared
+    external: true
+  monitoring_shared:
+    name: monitoring_shared
+    external: true

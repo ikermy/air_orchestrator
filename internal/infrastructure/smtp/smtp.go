@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ikermy/air-common/pkg/endpoint"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/endpoint"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
@@ -38,7 +38,7 @@ type store interface {
 
 // end — минимальный интерфейс только методы получения перевода
 type end interface {
-	TranslateMessageWithUserID(userID uint32, message string) string
+	TranslateMessageWithUserID(userID uint64, message string) string
 	TranslateMessageWithLang(lang, message string) string
 }
 
@@ -374,7 +374,7 @@ func (s *SMTP) SendCarpinteroVerification(userId uint64, message string) error {
 	return nil
 }
 
-func (s *SMTP) SendNotificationMail(userId uint32, recipient, msg string) error {
+func (s *SMTP) SendNotificationMail(userId uint64, recipient, msg string) error {
 	// Получатель и текст письма
 	to := []string{recipient}
 

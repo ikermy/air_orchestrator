@@ -1,0 +1,142 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "air-slo",
+    "project": "air"
+  },
+  "spec": {
+    "display": {
+      "name": "AiR SLO / RED / Dependencies"
+    },
+    "duration": "6h",
+    "refreshInterval": "30s",
+    "panels": {
+      "availability": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Availability (5m)" },
+          "plugin": { "kind": "StatChart", "spec": {} },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "1 - (sum(rate(airorc_http_requests_total{status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(airorc_http_requests_total[5m])), 1e-9))",
+                    "seriesNameFormat": "availability"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "error-ratio": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "5xx ratio (5m)" },
+          "plugin": { "kind": "StatChart", "spec": {} },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "airorc:http_error_ratio5m",
+                    "seriesNameFormat": "5xx"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "latency-p95": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Latency p95 (5m)" },
+          "plugin": { "kind": "StatChart", "spec": {} },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "airorc:http_latency_p95_5m",
+                    "seriesNameFormat": "p95"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "latency-p99": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Latency p99 (5m)" },
+          "plugin": { "kind": "StatChart", "spec": {} },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "airorc:http_latency_p99_5m",
+                    "seriesNameFormat": "p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "db-router-errors": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "DB router errors (5m)" },
+          "plugin": { "kind": "StatChart", "spec": {} },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate(air_common_db_router_errors_total[5m]))",
+                    "seriesNameFormat": "errors/s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "db-router-generation": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "DB router generation changes (10m)" },
+          "plugin": { "kind": "StatChart", "spec": {} },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "changes(air_common_db_router_generation[10m])",
+                    "seriesNameFormat": "changes"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

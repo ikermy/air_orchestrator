@@ -71,7 +71,7 @@ func (w *Web) DeleteAllUserDataWSSHandler(c *gin.Context) {
 		}
 		return
 	}
-	userID := uid.(uint32)
+	userID := uid.(uint64)
 
 	if userID == 0 {
 		logger.Error("получен некорректный userId")
@@ -100,7 +100,7 @@ func (w *Web) DeleteAllUserDataWSSHandler(c *gin.Context) {
 	w.DeleteAllUserDataWSS(conn, userID)
 }
 
-func (w *Web) DeleteAllUserDataWSS(conn *websocket.Conn, userID uint32) {
+func (w *Web) DeleteAllUserDataWSS(conn *websocket.Conn, userID uint64) {
 	// Создаем callback функцию для отправки сообщений
 	progressCallback := func(message string) {
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
@@ -162,8 +162,14 @@ func (w *Web) DeleteAllUserDataWSS(conn *websocket.Conn, userID uint32) {
 		}
 	}
 
-	// 4. Удаляю все данные через актуальную хранимую процедуру.
-	if err := w.db.DeleteAllUserData(userID); err != nil {
+	// 4. Удаляю данные: soft-delete с фоновым purge или немедленный hard-delete.
+	if config.UserDeleteSoft() {
+		if err := w.db.SoftDeleteUserData(userID, userID); err != nil {
+			progressCallback("❌ Ошибка пометки пользователя на удаление")
+			return
+		}
+		progressCallback("Пользователь помечен на удаление")
+	} else if err := w.db.DeleteAllUserData(userID); err != nil {
 		progressCallback("❌ Ошибка удаления данных из БД")
 		return
 	}
@@ -234,7 +240,7 @@ func (w *Web) DeleteAllUserDataWSS(conn *websocket.Conn, userID uint32) {
 	}
 }
 
-func CallStopForAllUserServices(userID uint32) error {
+func CallStopForAllUserServices(userID uint64) error {
 	// TODO реализовать для всех сервисов!
 
 	url := fmt.Sprintf("%s/stopall?uid=%d", config.LeadServiceURL, userID)
@@ -270,7 +276,7 @@ func CallStopForAllUserServices(userID uint32) error {
 	return nil
 }
 
-func (w *Web) DeleteUserS3Directory(ctx context.Context, userID uint32) error {
+func (w *Web) DeleteUserS3Directory(ctx context.Context, userID uint64) error {
 	if w.storage.Factory == nil {
 		logger.Info("storage factory not configured, skipping file deletion", userID)
 		return nil
@@ -305,8 +311,8 @@ func (w *Web) DeleteUserS3Directory(ctx context.Context, userID uint32) error {
 
 	// Reset storage quota
 	if quota, ok := any(w.db).(interface {
-		EnsureStorageQuota(context.Context, uint32) error
-		ResetStorageQuota(context.Context, uint32) error
+		EnsureStorageQuota(context.Context, uint64) error
+		ResetStorageQuota(context.Context, uint64) error
 	}); ok {
 		_ = quota.EnsureStorageQuota(ctx, userID)
 		_ = quota.ResetStorageQuota(ctx, userID)

@@ -12,15 +12,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ikermy/air-common/pkg/crypto"
-	"github.com/ikermy/air-common/pkg/mode"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/crypto"
+	"github.com/ikermy/air-common/v2/pkg/mode"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 )
 
 // GetAuthData возвращает данные для авторизации, ища пользователя по plaintext Email
 // (старые пользователи) или по EmailHash (мигрированные/новые пользователи).
 // isLegacy=true означает что пользователь ещё не мигрирован (EmailHash IS NULL).
-func (i *Implementation) GetAuthData(email, emailHMAC string) (storedHash string, userId uint32, confirmed, disabled, isLegacy bool, err error) {
+func (i *Implementation) GetAuthData(email, emailHMAC string) (storedHash string, userId uint64, confirmed, disabled, isLegacy bool, err error) {
 	if email == "" && emailHMAC == "" {
 		return "", 0, false, false, false, fmt.Errorf("получены пустые значения")
 	}
@@ -58,9 +59,12 @@ func (i *Implementation) GetAuthData(email, emailHMAC string) (storedHash string
 // MigrateUserSecurity обновляет SHA и Email пользователя до более безопасного формата.
 // Обновляет только строки где EmailHash IS NULL (пользователь ещё не мигрирован).
 // После успешного обновления запускает проверку завершения общей миграции.
-func (i *Implementation) MigrateUserSecurity(userId uint32, newHash, encEmail, emailHMAC string) error {
+func (i *Implementation) MigrateUserSecurity(userId uint64, newHash, encEmail, emailHMAC string) error {
 	if userId == 0 || newHash == "" || encEmail == "" || emailHMAC == "" {
 		return fmt.Errorf("получены некорректные данные для миграции пользователя %d", userId)
+	}
+	if i.UserMigrationDeadlineReached() {
+		return fmt.Errorf("срок миграции пользователей истёк (%s)", UserMigrationDeadline().Format(time.RFC3339))
 	}
 
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
@@ -88,14 +92,9 @@ func (i *Implementation) MigrateUserSecurity(userId uint32, newHash, encEmail, e
 
 // checkAndFinalizeMigration проверяет, все ли пользователи прошли lazy migration.
 // Если COUNT(*) WHERE EmailHash IS NULL == 0 — выполняет финальный ALTER TABLE.
+// Идемпотентна: повторный ALTER не выполняется, если миграция уже финализирована
+// (состояние хранится в app_config, поэтому не требуется отслеживание в памяти).
 func (i *Implementation) checkAndFinalizeMigration() {
-	i.migrationMu.Lock()
-	defer i.migrationMu.Unlock()
-
-	if i.migrationDone {
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(i.Context(), 60*time.Second)
 	defer cancel()
 
@@ -111,15 +110,14 @@ func (i *Implementation) checkAndFinalizeMigration() {
 		return
 	}
 
-	// Все пользователи мигрированы — финализируем схему
-	if _, err := i.Conn().ExecContext(ctx,
-		"ALTER TABLE user_auth MODIFY `EmailHash` VARCHAR(64) NOT NULL COLLATE 'utf8mb4_general_ci'"); err != nil {
+	finalized, err := i.FinalizeEmailHashMigration(ctx)
+	if err != nil {
 		logger.Error("DB: ошибка финализации миграции (NOT NULL): %v", err)
 		return
 	}
-
-	i.migrationDone = true
-	logger.Info("DB: lazy migration завершена — EmailHash переведён в NOT NULL")
+	if finalized {
+		logger.Info("DB: lazy migration завершена — EmailHash переведён в NOT NULL")
+	}
 }
 
 // ============================================================================
@@ -127,7 +125,7 @@ func (i *Implementation) checkAndFinalizeMigration() {
 // ============================================================================
 // SaveTOTPSecret сохраняет зашифрованный TOTP secret.
 // TOTPSecret IS NOT NULL означает, что TOTP включён для пользователя.
-func (i *Implementation) SaveTOTPSecret(ctx context.Context, userId uint32, encSecret string) error {
+func (i *Implementation) SaveTOTPSecret(ctx context.Context, userId uint64, encSecret string) error {
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -142,7 +140,7 @@ func (i *Implementation) SaveTOTPSecret(ctx context.Context, userId uint32, encS
 
 // GetTOTPData возвращает зашифрованный TOTP secret.
 // enabled = true когда TOTPSecret IS NOT NULL (тогда TOTP активен).
-func (i *Implementation) GetTOTPData(ctx context.Context, userId uint32) (encSecret string, enabled bool, err error) {
+func (i *Implementation) GetTOTPData(ctx context.Context, userId uint64) (encSecret string, enabled bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -167,7 +165,7 @@ func (i *Implementation) GetTOTPData(ctx context.Context, userId uint32) (encSec
 }
 
 // ClearTOTPSecret обнуляет TOTPSecret — отключает TOTP для пользователя.
-func (i *Implementation) ClearTOTPSecret(ctx context.Context, userId uint32) error {
+func (i *Implementation) ClearTOTPSecret(ctx context.Context, userId uint64) error {
 	ctx, cancel := context.WithTimeout(ctx, mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -187,7 +185,7 @@ func (i *Implementation) ClearTOTPSecret(ctx context.Context, userId uint32) err
 // Используется при первичной генерации и при смене/сбросе пароля.
 // GetPasswordHash возвращает сохранённый хеш пароля (bcrypt или legacy SHA3) по userId.
 // Используется для верификации пароля без знания email (например, в CreateMasterKey).
-func (i *Implementation) GetPasswordHash(userId uint32) (string, error) {
+func (i *Implementation) GetPasswordHash(userId uint64) (string, error) {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -203,7 +201,7 @@ func (i *Implementation) GetPasswordHash(userId uint32) (string, error) {
 	return storedHash, nil
 }
 
-func (i *Implementation) SaveMasterKey(userId uint32, encMK, wrapSalt string) error {
+func (i *Implementation) SaveMasterKey(userId uint64, encMK, wrapSalt string) error {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -218,7 +216,7 @@ func (i *Implementation) SaveMasterKey(userId uint32, encMK, wrapSalt string) er
 
 // GetMasterKeyData возвращает зашифрованный MasterKey и соль.
 // hasMK=false если MasterKey ещё не создан (колонки NULL).
-func (i *Implementation) GetMasterKeyData(userId uint32) (encMK, wrapSalt string, hasMK bool, err error) {
+func (i *Implementation) GetMasterKeyData(userId uint64) (encMK, wrapSalt string, hasMK bool, err error) {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -242,7 +240,7 @@ func (i *Implementation) GetMasterKeyData(userId uint32) (encMK, wrapSalt string
 
 // ClearMasterKey обнуляет MasterKey и WrapSalt пользователя.
 // Вызывается при сбросе пароля без raw MasterKey — после удаления всех зашифрованных данных.
-func (i *Implementation) ClearMasterKey(userId uint32) error {
+func (i *Implementation) ClearMasterKey(userId uint64) error {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -256,7 +254,7 @@ func (i *Implementation) ClearMasterKey(userId uint32) error {
 
 // DeleteEncryptedUserData удаляет все зашифрованные данные пользователя из БД.
 // Вызывается при сбросе пароля без raw MasterKey (ключ утрачен — данные недоступны).
-func (i *Implementation) DeleteEncryptedUserData(userId uint32) error {
+func (i *Implementation) DeleteEncryptedUserData(userId uint64) error {
 	if userId == 0 {
 		return fmt.Errorf("получен некорректный userId")
 	}
@@ -282,6 +280,10 @@ func (i *Implementation) DeleteEncryptedUserData(userId uint32) error {
 		`UPDATE user_storage_config SET access_key_ciphertext = NULL, secret_key_ciphertext = NULL WHERE user_id = ?`,
 		`UPDATE service_tgbots SET AuthData = NULL WHERE UserId = ?`,
 		`UPDATE service_wabots SET AuthData = NULL WHERE UserId = ?`,
+		`UPDATE user_bots SET auth_ciphertext = '' WHERE user_id = ?`,
+		`UPDATE user_channel_configs SET config = NULL WHERE user_id = ?`,
+		`UPDATE dialog_messages SET content = NULL, content_json = NULL WHERE user_id = ?`,
+		`UPDATE dialog_contexts SET context_json = NULL WHERE user_id = ?`,
 	}
 
 	for _, query := range queries {
@@ -296,7 +298,7 @@ func (i *Implementation) DeleteEncryptedUserData(userId uint32) error {
 	return nil
 }
 
-func (i *Implementation) decryptChannelField(userId uint32, s sql.NullString) json.RawMessage {
+func (i *Implementation) decryptChannelField(userId uint64, s sql.NullString) json.RawMessage {
 	if !s.Valid || s.String == "" {
 		return json.RawMessage(`{}`)
 	}
@@ -327,7 +329,7 @@ func (i *Implementation) decryptChannelField(userId uint32, s sql.NullString) js
 
 // EncryptChannelsWSS шифрует существующие plaintext данные каналов MasterKey'ом ($mk$).
 // Вызывается из CreateMasterKeyWSS после генерации MasterKey.
-func (i *Implementation) EncryptChannelsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptChannelsWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 
@@ -336,29 +338,27 @@ func (i *Implementation) EncryptChannelsWSS(userId uint32, masterKey [32]byte, p
 		col  string
 		val  sql.NullString
 	}
-	cols := []colDef{
-		{name: "tgbot", col: "TgBot"},
-		{name: "widget", col: "Widget"},
-		{name: "tgubot", col: "TgUserBot"},
-		{name: "whatsbot", col: "Whats"},
-		{name: "insta", col: "Insta"},
-		{name: "avito", col: "Avito"},
-	}
-
-	err := i.Conn().QueryRowContext(ctx,
-		`SELECT TgBot, Widget, TgUserBot, Whats, Insta, Avito FROM channels WHERE UserId = ?`, userId).
-		Scan(&cols[0].val, &cols[1].val, &cols[2].val, &cols[3].val, &cols[4].val, &cols[5].val)
-	if errors.Is(err, sql.ErrNoRows) {
-		if progressCallback != nil {
-			progressCallback("NO_CHANNELS_TO_ENCRYPT")
-		}
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("EncryptChannelsWSS: failed to read channels: %w", err)
+	infos := comdom.ConfigurableChannels()
+	cols := make([]colDef, len(infos))
+	selects := make([]string, len(infos))
+	scanTargets := make([]any, len(infos))
+	for idx, info := range infos {
+		cols[idx] = colDef{name: info.Slug, col: info.LegacyColumn}
+		selects[idx] = fmt.Sprintf("`%s`", info.LegacyColumn)
+		scanTargets[idx] = &cols[idx].val
 	}
 
 	encrypted := 0
+	err := i.Conn().QueryRowContext(ctx,
+		fmt.Sprintf("SELECT %s FROM channels WHERE UserId = ?", strings.Join(selects, ", ")), userId).
+		Scan(scanTargets...)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		// Нет legacy-строки channels — всё равно шифруем v2-конфиги ниже.
+	case err != nil:
+		return fmt.Errorf("EncryptChannelsWSS: failed to read channels: %w", err)
+	}
+
 	for col := range cols {
 		c := &cols[col]
 		if !c.val.Valid || c.val.String == "" || crypto.IsEncryptedWithMasterKey(c.val.String) {
@@ -380,6 +380,49 @@ func (i *Implementation) EncryptChannelsWSS(userId uint32, masterKey [32]byte, p
 		encrypted++
 	}
 
+	// Шифруем v2-конфиги каналов (user_channel_configs).
+	cfgRows, err := i.Conn().QueryContext(ctx,
+		"SELECT channel_id, config FROM user_channel_configs WHERE user_id = ? AND config IS NOT NULL", userId)
+	if err != nil {
+		return fmt.Errorf("EncryptChannelsWSS: failed to read user_channel_configs: %w", err)
+	}
+	type configRecord struct {
+		channelID uint64
+		config    string
+	}
+	var configs []configRecord
+	for cfgRows.Next() {
+		var rec configRecord
+		if err := cfgRows.Scan(&rec.channelID, &rec.config); err != nil {
+			cfgRows.Close()
+			return fmt.Errorf("EncryptChannelsWSS: scan user_channel_configs: %w", err)
+		}
+		if rec.config == "" || crypto.IsEncryptedWithMasterKey(rec.config) {
+			continue
+		}
+		configs = append(configs, rec)
+	}
+	if err := cfgRows.Err(); err != nil {
+		cfgRows.Close()
+		return err
+	}
+	if err := cfgRows.Close(); err != nil {
+		return err
+	}
+	for _, rec := range configs {
+		encVal, encErr := crypto.EncryptFieldWithMasterKey(masterKey, rec.config)
+		if encErr != nil {
+			logger.Error("EncryptChannelsWSS: failed to encrypt user_channel_configs %d: %v", rec.channelID, encErr, userId)
+			continue
+		}
+		if _, updErr := i.Conn().ExecContext(ctx,
+			"UPDATE user_channel_configs SET config = ? WHERE channel_id = ?", encVal, rec.channelID); updErr != nil {
+			logger.Error("EncryptChannelsWSS: failed to save user_channel_configs %d: %v", rec.channelID, updErr, userId)
+			continue
+		}
+		encrypted++
+	}
+
 	if progressCallback != nil {
 		if encrypted == 0 {
 			progressCallback("NO_CHANNELS_TO_ENCRYPT")
@@ -392,7 +435,7 @@ func (i *Implementation) EncryptChannelsWSS(userId uint32, masterKey [32]byte, p
 }
 
 // EncryptDialogsWSS шифрует все plaintext Data во всех диалогах пользователя.
-func (i *Implementation) EncryptDialogsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptDialogsWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 60*time.Second)
 	defer cancel()
 
@@ -457,7 +500,7 @@ func (i *Implementation) EncryptDialogsWSS(userId uint32, masterKey [32]byte, pr
 }
 
 // EncryptGoogleTokenWSS шифрует access_token и refresh_token Google OAuth токенов MasterKey'ом.
-func (i *Implementation) EncryptGoogleTokenWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptGoogleTokenWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 30*time.Second)
 	defer cancel()
 
@@ -515,7 +558,7 @@ func (i *Implementation) EncryptGoogleTokenWSS(userId uint32, masterKey [32]byte
 	return nil
 }
 
-func (i *Implementation) EncryptVectorEmbeddingsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptVectorEmbeddingsWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second) // документов может быть много
 	defer cancel()
 
@@ -564,7 +607,7 @@ func (i *Implementation) EncryptVectorEmbeddingsWSS(userId uint32, masterKey [32
 	return nil
 }
 
-func (i *Implementation) EncryptCRMConfigsWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptCRMConfigsWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second)
 	defer cancel()
 
@@ -639,7 +682,7 @@ func (i *Implementation) EncryptCRMConfigsWSS(userId uint32, masterKey [32]byte,
 	return nil
 }
 
-func (i *Implementation) EncryptCRMOAuthStatesWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptCRMOAuthStatesWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second)
 	defer cancel()
 
@@ -703,7 +746,7 @@ func (i *Implementation) EncryptCRMOAuthStatesWSS(userId uint32, masterKey [32]b
 	return nil
 }
 
-func (i *Implementation) EncryptUserStorageConfigWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptUserStorageConfigWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), mode.GetSQLTimeToCancel())
 	defer cancel()
 
@@ -765,7 +808,7 @@ func (i *Implementation) EncryptUserStorageConfigWSS(userId uint32, masterKey [3
 	return nil
 }
 
-func (i *Implementation) EncryptUserStorageServicesBotDataWSS(userId uint32, masterKey [32]byte, progressCallback func(string)) error {
+func (i *Implementation) EncryptUserStorageServicesBotDataWSS(userId uint64, masterKey [32]byte, progressCallback func(string)) error {
 	ctx, cancel := context.WithTimeout(i.Context(), 120*time.Second)
 	defer cancel()
 
@@ -824,11 +867,67 @@ func (i *Implementation) EncryptUserStorageServicesBotDataWSS(userId uint32, mas
 		return nil
 	}
 
-	// Шифруем обе таблицы
+	// Шифруем обе legacy-таблицы (на время expand-фазы).
 	if err := encryptTable("service_tgbots"); err != nil {
 		return err
 	}
 	if err := encryptTable("service_wabots"); err != nil {
+		return err
+	}
+
+	// Шифруем актуальные user_bots.
+	encryptUserBots := func(botType string) error {
+		rows, err := i.Conn().QueryContext(ctx,
+			"SELECT id, auth_ciphertext FROM user_bots WHERE user_id = ? AND bot_type = ?", userId, botType)
+		if err != nil {
+			return fmt.Errorf("EncryptUserStorageServicesBotDataWSS: query user_bots %s: %w", botType, err)
+		}
+		defer rows.Close()
+
+		type botRecord struct {
+			id       uint64
+			authData sql.NullString
+		}
+		var toEncrypt []botRecord
+		for rows.Next() {
+			var rec botRecord
+			if err := rows.Scan(&rec.id, &rec.authData); err != nil {
+				return fmt.Errorf("EncryptUserStorageServicesBotDataWSS: scan user_bots %s: %w", botType, err)
+			}
+			if !rec.authData.Valid || rec.authData.String == "" || crypto.IsEncryptedWithMasterKey(rec.authData.String) {
+				continue
+			}
+			toEncrypt = append(toEncrypt, rec)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if len(toEncrypt) == 0 {
+			progressCallback(fmt.Sprintf("NO_USER_BOTS_%s_TO_ENCRYPT", strings.ToUpper(botType)))
+			return nil
+		}
+
+		progressCallback(fmt.Sprintf("ENCRYPTING_USER_BOTS_%s:%d", strings.ToUpper(botType), len(toEncrypt)))
+		encrypted := 0
+		for _, rec := range toEncrypt {
+			encAuthData, err := crypto.EncryptFieldWithMasterKey(masterKey, rec.authData.String)
+			if err != nil {
+				return fmt.Errorf("EncryptUserStorageServicesBotDataWSS: encrypt user_bots %s: %w", botType, err)
+			}
+			if _, err := i.Conn().ExecContext(ctx,
+				"UPDATE user_bots SET auth_ciphertext = ? WHERE id = ?", encAuthData, rec.id); err != nil {
+				return fmt.Errorf("EncryptUserStorageServicesBotDataWSS: update user_bots %s: %w", botType, err)
+			}
+			encrypted++
+		}
+		progressCallback(fmt.Sprintf("ENCRYPTED_USER_BOTS_%s_COUNT:%d", strings.ToUpper(botType), encrypted))
+		return nil
+	}
+
+	if err := encryptUserBots("telegram"); err != nil {
+		return err
+	}
+	if err := encryptUserBots("whatsapp"); err != nil {
 		return err
 	}
 

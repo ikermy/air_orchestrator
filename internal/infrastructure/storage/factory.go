@@ -10,11 +10,11 @@ import (
 type StorageFactory struct {
 	internal Storage
 	configs  interface {
-		StorageConfig(context.Context, uint32) (BackendConfig, error)
+		StorageConfig(context.Context, uint64) (BackendConfig, error)
 	}
-	masterKey func(uint32) ([32]byte, bool)
+	masterKey func(uint64) ([32]byte, bool)
 	cache     ReservationCache
-	onLocked  func(userID uint32)
+	onLocked  func(userID uint64)
 }
 
 func NewStorageFactory(internal Storage) *StorageFactory {
@@ -22,8 +22,8 @@ func NewStorageFactory(internal Storage) *StorageFactory {
 }
 
 func NewConfiguredStorageFactory(internal Storage, configs interface {
-	StorageConfig(context.Context, uint32) (BackendConfig, error)
-}, masterKey func(uint32) ([32]byte, bool)) *StorageFactory {
+	StorageConfig(context.Context, uint64) (BackendConfig, error)
+}, masterKey func(uint64) ([32]byte, bool)) *StorageFactory {
 	return &StorageFactory{internal: internal, configs: configs, masterKey: masterKey}
 }
 
@@ -31,9 +31,9 @@ func NewConfiguredStorageFactory(internal Storage, configs interface {
 func (f *StorageFactory) SetCache(cache ReservationCache) { f.cache = cache }
 
 // OnStorageLocked sets a callback invoked when the user MasterKey is unavailable.
-func (f *StorageFactory) OnStorageLocked(fn func(uint32)) { f.onLocked = fn }
+func (f *StorageFactory) OnStorageLocked(fn func(uint64)) { f.onLocked = fn }
 
-func (f *StorageFactory) Resolve(ctx context.Context, userID uint32) (Storage, error) {
+func (f *StorageFactory) Resolve(ctx context.Context, userID uint64) (Storage, error) {
 	if f == nil {
 		return nil, fmt.Errorf("storage factory is nil")
 	}
@@ -52,7 +52,7 @@ func (f *StorageFactory) Resolve(ctx context.Context, userID uint32) (Storage, e
 	return f.internal, nil
 }
 
-func (f *StorageFactory) loadCachedConfig(ctx context.Context, userID uint32) (BackendConfig, error) {
+func (f *StorageFactory) loadCachedConfig(ctx context.Context, userID uint64) (BackendConfig, error) {
 	if cached, ok := LoadCachedConfig(ctx, f.cache, userID); ok {
 		return BackendConfig{
 			UserID:               userID,
@@ -77,7 +77,7 @@ func (f *StorageFactory) loadCachedConfig(ctx context.Context, userID uint32) (B
 
 // ResolveByType returns the backend for the specified type regardless of the
 // user's current active config. Used by migrations to get the target backend.
-func (f *StorageFactory) ResolveByType(ctx context.Context, userID uint32, typ BackendType) (Storage, error) {
+func (f *StorageFactory) ResolveByType(ctx context.Context, userID uint64, typ BackendType) (Storage, error) {
 	if f == nil || f.internal == nil {
 		return nil, fmt.Errorf("storage factory is nil")
 	}
@@ -97,7 +97,7 @@ func (f *StorageFactory) ResolveByType(ctx context.Context, userID uint32, typ B
 	return f.externalClient(ctx, userID, cfg)
 }
 
-func (f *StorageFactory) externalClient(ctx context.Context, userID uint32, cfg BackendConfig) (Storage, error) {
+func (f *StorageFactory) externalClient(ctx context.Context, userID uint64, cfg BackendConfig) (Storage, error) {
 	if err := ValidateExternalEndpoint(ctx, cfg.Endpoint, true); err != nil {
 		return nil, fmt.Errorf("external storage endpoint rejected: %w", err)
 	}

@@ -28,7 +28,7 @@ type ReservationCacheSetNX interface {
 type UploadReservation struct {
 	ID             string    `json:"id"`
 	IdempotencyKey string    `json:"idempotency_key"`
-	UserID         uint32    `json:"user_id"`
+	UserID uint64    `json:"user_id"`
 	ObjectKey      string    `json:"object_key"`
 	Size           int64     `json:"size"`
 	Status         string    `json:"status"`
@@ -36,7 +36,7 @@ type UploadReservation struct {
 }
 
 // IdempotencyKey returns a user-scoped Redis key for an upload request.
-func IdempotencyKey(userID uint32, key string) string {
+func IdempotencyKey(userID uint64, key string) string {
 	return fmt.Sprintf("reservation-idempotency:%d:%s", userID, key)
 }
 

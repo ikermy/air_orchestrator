@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ikermy/air-common/pkg/crypto"
+	"github.com/ikermy/air-common/v2/pkg/crypto"
 )
 
-func (i *Implementation) StorageConfig(ctx context.Context, userID uint32) (storage.BackendConfig, error) {
+func (i *Implementation) StorageConfig(ctx context.Context, userID uint64) (storage.BackendConfig, error) {
 	if userID == 0 {
 		return storage.BackendConfig{}, fmt.Errorf("invalid user ID")
 	}
@@ -102,7 +102,7 @@ func decryptStorageCredential(masterKey [32]byte, value string) (string, error) 
 	return crypto.DecryptFieldWithMasterKey(masterKey, value)
 }
 
-func (i *Implementation) EnsureStorageQuota(ctx context.Context, userID uint32) error {
+func (i *Implementation) EnsureStorageQuota(ctx context.Context, userID uint64) error {
 	if userID == 0 {
 		return fmt.Errorf("invalid user ID")
 	}
@@ -112,7 +112,7 @@ func (i *Implementation) EnsureStorageQuota(ctx context.Context, userID uint32) 
 	return err
 }
 
-func (i *Implementation) ReserveStorage(ctx context.Context, userID uint32, size int64) error {
+func (i *Implementation) ReserveStorage(ctx context.Context, userID uint64, size int64) error {
 	if userID == 0 || size <= 0 {
 		return fmt.Errorf("invalid storage reservation")
 	}
@@ -142,7 +142,7 @@ func (i *Implementation) ReserveStorage(ctx context.Context, userID uint32, size
 	return tx.Commit()
 }
 
-func (i *Implementation) CommitStorage(ctx context.Context, userID uint32, size int64) error {
+func (i *Implementation) CommitStorage(ctx context.Context, userID uint64, size int64) error {
 	if userID == 0 || size <= 0 {
 		return fmt.Errorf("invalid storage commit")
 	}
@@ -160,7 +160,7 @@ func (i *Implementation) CommitStorage(ctx context.Context, userID uint32, size 
 	return nil
 }
 
-func (i *Implementation) ReleaseStorage(ctx context.Context, userID uint32, size int64) error {
+func (i *Implementation) ReleaseStorage(ctx context.Context, userID uint64, size int64) error {
 	if userID == 0 || size <= 0 {
 		return fmt.Errorf("invalid storage release")
 	}
@@ -178,7 +178,7 @@ func (i *Implementation) ReleaseStorage(ctx context.Context, userID uint32, size
 	return nil
 }
 
-func (i *Implementation) ResetStorageQuota(ctx context.Context, userID uint32) error {
+func (i *Implementation) ResetStorageQuota(ctx context.Context, userID uint64) error {
 	if userID == 0 {
 		return fmt.Errorf("invalid storage quota reset")
 	}
@@ -186,7 +186,7 @@ func (i *Implementation) ResetStorageQuota(ctx context.Context, userID uint32) e
 	return err
 }
 
-func (i *Implementation) StorageQuota(ctx context.Context, userID uint32) (quota, used, reserved uint64, err error) {
+func (i *Implementation) StorageQuota(ctx context.Context, userID uint64) (quota, used, reserved uint64, err error) {
 	if userID == 0 {
 		return 0, 0, 0, fmt.Errorf("invalid user ID")
 	}
@@ -196,16 +196,16 @@ func (i *Implementation) StorageQuota(ctx context.Context, userID uint32) (quota
 	return
 }
 
-func (i *Implementation) ListReservedUsers(ctx context.Context) ([]uint32, error) {
+func (i *Implementation) ListReservedUsers(ctx context.Context) ([]uint64, error) {
 	rows, err := i.Conn().QueryContext(ctx, `SELECT user_id FROM user_storage_quota WHERE reserved_bytes > 0`)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	var users []uint32
+	var users []uint64
 	for rows.Next() {
-		var uid uint32
+		var uid uint64
 		if scanErr := rows.Scan(&uid); scanErr != nil {
 			return nil, scanErr
 		}
@@ -217,7 +217,7 @@ func (i *Implementation) ListReservedUsers(ctx context.Context) ([]uint32, error
 
 // ReleaseAllReservedStorage clears only the reservation portion of quota after
 // Redis recovery. Committed usage is never changed.
-func (i *Implementation) ReleaseAllReservedStorage(ctx context.Context, userID uint32) error {
+func (i *Implementation) ReleaseAllReservedStorage(ctx context.Context, userID uint64) error {
 	if userID == 0 {
 		return fmt.Errorf("invalid user ID")
 	}
@@ -225,7 +225,7 @@ func (i *Implementation) ReleaseAllReservedStorage(ctx context.Context, userID u
 	return err
 }
 
-func (i *Implementation) CreateMigration(ctx context.Context, userID uint32, sourceType, targetType storage.BackendType) (storageusecase.MigrationRecord, error) {
+func (i *Implementation) CreateMigration(ctx context.Context, userID uint64, sourceType, targetType storage.BackendType) (storageusecase.MigrationRecord, error) {
 	if userID == 0 {
 		return storageusecase.MigrationRecord{}, fmt.Errorf("invalid user ID")
 	}

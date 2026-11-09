@@ -61,7 +61,7 @@ func (m *memoryStorage) PresignedGetURL(_ context.Context, key string, _ time.Du
 
 type memoryResolver struct{ storage infra.Storage }
 
-func (r memoryResolver) Resolve(context.Context, uint32) (infra.Storage, error) {
+func (r memoryResolver) Resolve(context.Context, uint64) (infra.Storage, error) {
 	return r.storage, nil
 }
 

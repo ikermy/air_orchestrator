@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ikermy/air-common/pkg/comdom"
-	"github.com/ikermy/air-common/pkg/endpoint"
-	"github.com/ikermy/air-common/pkg/model"
-	"github.com/ikermy/air-common/pkg/model/create"
-	"github.com/ikermy/air-common/pkg/startpoint"
+	"github.com/ikermy/air-common/v2/pkg/comdom"
+	"github.com/ikermy/air-common/v2/pkg/endpoint"
+	"github.com/ikermy/air-common/v2/pkg/model"
+	"github.com/ikermy/air-common/v2/pkg/model/create"
+	"github.com/ikermy/air-common/v2/pkg/startpoint"
 
 	"sync"
 	"time"
@@ -21,9 +21,9 @@ import (
 
 // Store — минимальный интерфейс к БД для TestAPI.
 type Store interface {
-	CheckDemo(userId uint32) (bool, error)
-	GetOrSetTreadAndResponder(userID uint32, responderRealId uint64, responderName string, chatType comdom.ChannelType) (uint64, error)
-	GetModelByProviderAnyStatus(userID uint32, provider comdom.ProviderType) (*comdom.UserModelRecord, error)
+	CheckDemo(userId uint64) (bool, error)
+	GetOrSetTreadAndResponder(userID uint64, responderRealId uint64, responderName string, chatType comdom.ChannelType) (uint64, error)
+	GetModelByProviderAnyStatus(userID uint64, provider comdom.ProviderType) (*comdom.UserModelRecord, error)
 }
 
 // ============================================================================
@@ -35,38 +35,38 @@ type NullBot struct{}
 
 func (n *NullBot) StartBots() error { return nil }
 func (n *NullBot) StopBot()         {}
-func (n *NullBot) DisableOperatorMode(_ uint32, _ uint64, _ ...bool) error {
+func (n *NullBot) DisableOperatorMode(_ uint64, _ uint64, _ ...bool) error {
 	return nil
 }
 
 // NullOperator заглушка для OperatorInterface
 type NullOperator struct{}
 
-func (n *NullOperator) AskOperator(_ context.Context, _ uint32, _ uint64, _ model.Message) (model.Message, error) {
+func (n *NullOperator) AskOperator(_ context.Context, _ uint64, _ uint64, _ model.Message) (model.Message, error) {
 	return model.Message{}, fmt.Errorf("operator not available in test mode")
 }
 
-func (n *NullOperator) SendToOperator(_ context.Context, _ uint32, _ uint64, _ model.Message) error {
+func (n *NullOperator) SendToOperator(_ context.Context, _ uint64, _ uint64, _ model.Message) error {
 	return fmt.Errorf("operator not available in test mode")
 }
 
-func (n *NullOperator) ReceiveFromOperator(_ context.Context, _ uint32, _ uint64) <-chan model.Message {
+func (n *NullOperator) ReceiveFromOperator(_ context.Context, _ uint64, _ uint64) <-chan model.Message {
 	ch := make(chan model.Message)
 	close(ch)
 	return ch
 }
 
-func (n *NullOperator) DeleteSession(_ uint32, _ uint64) error {
+func (n *NullOperator) DeleteSession(_ uint64, _ uint64) error {
 	return nil
 }
 
-func (n *NullOperator) GetConnectionErrors(_ context.Context, _ uint32, _ uint64) <-chan string {
+func (n *NullOperator) GetConnectionErrors(_ context.Context, _ uint64, _ uint64) <-chan string {
 	ch := make(chan string)
 	close(ch)
 	return ch
 }
 
-func (n *NullOperator) CloseOperatorSSE(_ context.Context, _ uint32, _ uint64) error {
+func (n *NullOperator) CloseOperatorSSE(_ context.Context, _ uint64, _ uint64) error {
 	return nil
 }
 
@@ -76,7 +76,7 @@ func (n *NullOperator) CloseOperatorSSE(_ context.Context, _ uint32, _ uint64) e
 
 // TestSession представляет активную тестовую сессию
 type TestSession struct {
-	UserId     uint32
+	UserId uint64
 	RespId     uint64
 	TreadId    uint64
 	Channel    *model.Ch
@@ -100,7 +100,7 @@ type TestAPI struct {
 	ctx      context.Context // контекст для управления жизненным циклом фоновых горутин
 }
 
-func (ta *TestAPI) getUserModel(userId uint32, provider comdom.ProviderType) (*comdom.UniversalModelData, error) {
+func (ta *TestAPI) getUserModel(userId uint64, provider comdom.ProviderType) (*comdom.UniversalModelData, error) {
 	userModel, err := ta.mod.GetUserModelByProvider(userId, provider)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка получения активной модели пользователя: %w", err)
@@ -183,12 +183,12 @@ func NewTestAPI(
 }
 
 // sessionKey генерирует ключ для идентификации сессии
-func (ta *TestAPI) sessionKey(userId uint32, respId uint64) string {
+func (ta *TestAPI) sessionKey(userId uint64, respId uint64) string {
 	return fmt.Sprintf("%d:%d", userId, respId)
 }
 
 // StartSession запускает новую тестовую сессию
-func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint64, provider comdom.ProviderType) (*TestSession, *comdom.UniversalModelData, error) {
+func (ta *TestAPI) StartSession(ctx context.Context, userId uint64, respId uint64, provider comdom.ProviderType) (*TestSession, *comdom.UniversalModelData, error) {
 	key := ta.sessionKey(userId, respId)
 
 	if existing, ok := ta.sessions.Load(key); ok {
@@ -421,7 +421,7 @@ func (ta *TestAPI) StartSession(ctx context.Context, userId uint32, respId uint6
 }
 
 // GetSessionModel возвращает данные модели для активной сессии
-func (ta *TestAPI) GetSessionModel(userId uint32, respId uint64, provider comdom.ProviderType) (*comdom.UniversalModelData, error) {
+func (ta *TestAPI) GetSessionModel(userId uint64, respId uint64, provider comdom.ProviderType) (*comdom.UniversalModelData, error) {
 	key := ta.sessionKey(userId, respId)
 
 	_, ok := ta.sessions.Load(key)
@@ -439,7 +439,7 @@ func (ta *TestAPI) GetSessionModel(userId uint32, respId uint64, provider comdom
 }
 
 // SendMessage отправляет полное сообщение (с файлами) в активную сессию
-func (ta *TestAPI) SendMessage(userId uint32, respId uint64, msg model.Message) error {
+func (ta *TestAPI) SendMessage(userId uint64, respId uint64, msg model.Message) error {
 	logger.Debug("TestAPI: SendMessage called, respId=%d, message type=%s", respId, msg.Type, userId)
 	key := ta.sessionKey(userId, respId)
 
@@ -456,7 +456,7 @@ func (ta *TestAPI) SendMessage(userId uint32, respId uint64, msg model.Message) 
 }
 
 // GetChannel возвращает канал для WebSocket соединения
-func (ta *TestAPI) GetChannel(userId uint32, respId uint64) (*model.Ch, error) {
+func (ta *TestAPI) GetChannel(userId uint64, respId uint64) (*model.Ch, error) {
 	key := ta.sessionKey(userId, respId)
 
 	session, ok := ta.sessions.Load(key)
@@ -473,7 +473,7 @@ func (ta *TestAPI) GetChannel(userId uint32, respId uint64) (*model.Ch, error) {
 }
 
 // GetAnswer получает ответ из активной сессии с таймаутом (deprecated - используйте GetChannel для WebSocket)
-func (ta *TestAPI) GetAnswer(ctx context.Context, userId uint32, respId uint64, timeout time.Duration) (*AnswerResponse, error) {
+func (ta *TestAPI) GetAnswer(ctx context.Context, userId uint64, respId uint64, timeout time.Duration) (*AnswerResponse, error) {
 	key := ta.sessionKey(userId, respId)
 
 	session, ok := ta.sessions.Load(key)
@@ -507,7 +507,7 @@ func (ta *TestAPI) GetAnswer(ctx context.Context, userId uint32, respId uint64, 
 }
 
 // StopSession останавливает активную сессию
-func (ta *TestAPI) StopSession(userId uint32, respId uint64) error {
+func (ta *TestAPI) StopSession(userId uint64, respId uint64) error {
 	key := ta.sessionKey(userId, respId)
 
 	session, ok := ta.sessions.Load(key)
@@ -562,7 +562,7 @@ func (ta *TestAPI) StopSession(userId uint32, respId uint64) error {
 // Router'а, а Assist.Provider указывает на LLM-провайдера (например, Mistral),
 // чей нативный SendRealtimeAudio не находит сессию
 // ("Mistral realtime session not found").
-func (ta *TestAPI) getRealtimeProvider(userId uint32, respId uint64) (model.RealtimeProvider, bool) {
+func (ta *TestAPI) getRealtimeProvider(userId uint64, respId uint64) (model.RealtimeProvider, bool) {
 	// 1. Через TestSession, если у провайдера есть эта сессия.
 	key := ta.sessionKey(userId, respId)
 	if session, ok := ta.sessions.Load(key); ok {
@@ -597,7 +597,7 @@ func (ta *TestAPI) getRealtimeProvider(userId uint32, respId uint64) (model.Real
 // (сессия могла быть удалена CleanupWebSocketSession после закрытия /ws/test-model).
 // Поддерживаются OpenAI Realtime API, Google Live API и Mistral realtime
 // cascade (Voxtral STT → Mistral LLM → Voxtral TTS).
-func (ta *TestAPI) StartRealtimeSession(userId uint32, respId uint64, treadId uint64) (*model.RealtimeChannels, error) {
+func (ta *TestAPI) StartRealtimeSession(userId uint64, respId uint64, treadId uint64) (*model.RealtimeChannels, error) {
 	startCh := &model.StartCh{
 		Ctx:      ta.ctx,
 		ChName:   comdom.Web,
@@ -638,7 +638,7 @@ func (ta *TestAPI) StartRealtimeSession(userId uint32, respId uint64, treadId ui
 // Если TestSession жива — используется её RespModel. Иначе достаточно
 // минимальной модели с корректным UserID: ядро выберет провайдера по
 // активной модели пользователя, а провайдер восстановит респондента из БД.
-func (ta *TestAPI) realtimeRespModel(userId uint32, respId uint64) *model.RespModel {
+func (ta *TestAPI) realtimeRespModel(userId uint64, respId uint64) *model.RespModel {
 	if v, ok := ta.sessions.Load(ta.sessionKey(userId, respId)); ok {
 		if s := v.(*TestSession); s.RespModel != nil {
 			return s.RespModel
@@ -649,12 +649,12 @@ func (ta *TestAPI) realtimeRespModel(userId uint32, respId uint64) *model.RespMo
 
 // StopRealtimeSession завершает голосовую сессию respId через ядро CloseSession:
 // отписка событий, остановка провайдера и очистка реестра сессий.
-func (ta *TestAPI) StopRealtimeSession(_ uint32, respId uint64) {
+func (ta *TestAPI) StopRealtimeSession(_ uint64, respId uint64) {
 	ta.starter.CloseSession(respId)
 }
 
 // SendRealtimeAudio передаёт PCM16-чанк от клиента в голосовую сессию.
-func (ta *TestAPI) SendRealtimeAudio(userId uint32, respId uint64, pcm16 []byte) error {
+func (ta *TestAPI) SendRealtimeAudio(userId uint64, respId uint64, pcm16 []byte) error {
 	rp, ok := ta.getRealtimeProvider(userId, respId)
 	if !ok {
 		return fmt.Errorf("SendRealtimeAudio: RealtimeProvider недоступен")
@@ -665,7 +665,7 @@ func (ta *TestAPI) SendRealtimeAudio(userId uint32, respId uint64, pcm16 []byte)
 // CleanupWebSocketSession очищает WebSocket сессию без удаления канала из RespModel
 // Используется при закрытии WebSocket соединения для возможности переподключения
 // ВАЖНО: НЕ отменяет контекст и НЕ закрывает каналы - они живут до истечения TTL респондента
-func (ta *TestAPI) CleanupWebSocketSession(userId uint32, respId uint64) error {
+func (ta *TestAPI) CleanupWebSocketSession(userId uint64, respId uint64) error {
 	// Переподключение не поддерживается: отключение WebSocket полностью
 	// завершает тестовую сессию. Следующее подключение создаст новые каналы.
 	logger.Debug("WebSocket сессия отключена, respId=%d (сессия завершена)", respId, userId)

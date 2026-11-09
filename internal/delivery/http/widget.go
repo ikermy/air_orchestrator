@@ -180,7 +180,7 @@ var proxyClient = &http.Client{
 	}(),
 }
 
-func (w *Web) universalProxyWidgetRequest(c *gin.Context, uid *uint32, ctx context.Context) {
+func (w *Web) universalProxyWidgetRequest(c *gin.Context, uid *uint64, ctx context.Context) {
 	logger.Debug("universalProxyWidgetRequest: проксирование запроса %s %s", c.Request.Method, c.Request.URL.String())
 	requestURL := *c.Request.URL
 	query := requestURL.Query()

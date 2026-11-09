@@ -45,6 +45,39 @@ services:
       - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password.txt
       # ── SQL время отмены контекста долгих операций в секундах ──────────────────────────────────────────────────────
       - GLOB_SQL_CTX_CANCEL=1
+      # Phase 2: read channels from user_channels/user_channel_configs.
+      # Phase 1: generate Snowflake IDs for new entities (users/dialogs/...).
+      - IDGEN_ENABLED=${IDGEN_ENABLED:-true}
+      - CHANNELS_V2_READ_ENABLED=${CHANNELS_V2_READ_ENABLED:-false}
+      # Phase 3: read dialogs contexts/messages from dialog_messages/dialog_contexts.
+      - DIALOG_MESSAGES_READ_ENABLED=${DIALOG_MESSAGES_READ_ENABLED:-false}
+      # MCP: общий секрет для HMAC-подписи X-Session-ID и запрет legacy-формата.
+      - MCP_SESSION_SECRET=${MCP_SESSION_SECRET:-}
+      - MCP_REQUIRE_SIGNED_SESSION=${MCP_REQUIRE_SIGNED_SESSION:-false}
+      - MCP_SERVICE_KEY=${MCP_SERVICE_KEY:-}
+      # Phase 6: shard routing (пусто = single-DB режим).
+      - DB_SHARDS_CONFIG=${DB_SHARDS_CONFIG:-}
+      - DB_SHARDS_CONFIG_FILE=${DB_SHARDS_CONFIG_FILE:-}
+      - DB_SHARD0_DSN=${DB_SHARD0_DSN:-}
+      - SHARD_STRICT=${SHARD_STRICT:-false}
+      # OpenTelemetry: пусто = трассировка отключена.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      # Phase 4.3: soft-delete + фоновый purge.
+      - USER_DELETE_SOFT=${USER_DELETE_SOFT:-false}
+      - USER_DELETE_GRACE=${USER_DELETE_GRACE:-24h}
+      - USER_PURGE_INTERVAL=${USER_PURGE_INTERVAL:-1h}
+      # Финальная миграция: после deadline (по умолчанию 2026-12-31T23:59:59Z)
+      # немигрировавшие пользователи и их данные удаляются, EmailHash -> NOT NULL.
+      - USER_MIGRATION_DEADLINE=${USER_MIGRATION_DEADLINE:-2026-12-31T23:59:59Z}
+      - USER_MIGRATION_FINALIZE=${USER_MIGRATION_FINALIZE:-true}
+      - USER_MIGRATION_CHECK_INTERVAL=${USER_MIGRATION_CHECK_INTERVAL:-1h}
+      # Retention исторических таблиц (по умолчанию выключена).
+      - RETENTION_ENABLED=${RETENTION_ENABLED:-false}
+      - RETENTION_INTERVAL=${RETENTION_INTERVAL:-6h}
+      - USER_BOT_EVENTS_RETENTION=${USER_BOT_EVENTS_RETENTION:-2160h}
+      - AUDIT_LOG_RETENTION=${AUDIT_LOG_RETENTION:-8760h}
+      - WEBHOOK_DEDUP_RETENTION=${WEBHOOK_DEDUP_RETENTION:-168h}
     ports:
       # gRPC ConfigService напрямую с хоста (для нативных клиентов, напр. air_phantom).
       - "50051:50051"
