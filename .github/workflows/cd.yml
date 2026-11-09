@@ -230,8 +230,21 @@ jobs:
           # из репозитория, поэтому убираем контейнеры по именам (идемпотентно).
           docker rm -f airorc_prometheus airorc_grafana air_loki air_promtail 2>/dev/null || true
           COMPOSE="docker compose --env-file configs/.env"
-          $COMPOSE -f build/air-db.yml up -d
-          $COMPOSE -f build/air-redis.yml up -d
+
+          # Инфраструктурные контейнеры (air_db/air_redis) созданы вне текущего
+          # compose-проекта, поэтому compose пытается создать их заново и падает
+          # на конфликте имён. Если контейнер уже есть — только стартуем его.
+          ensure_container() {
+            name="$1"
+            file="$2"
+            if docker inspect "$name" >/dev/null 2>&1; then
+              docker start "$name" >/dev/null 2>&1 || true
+            else
+              $COMPOSE -f "$file" up -d
+            fi
+          }
+          ensure_container air_db build/air-db.yml
+          ensure_container air_redis build/air-redis.yml
           $COMPOSE -f build/air-vm.yml up -d
           $COMPOSE -f build/air-vlogs.yml up -d
           $COMPOSE -f build/air-vector.yml up -d
