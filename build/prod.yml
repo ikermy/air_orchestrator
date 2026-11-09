@@ -29,6 +29,17 @@ services:
       - TELEGRAM_CALLS_GRPC_ADDR=${TELEGRAM_CALLS_GRPC_ADDR:-tguserbot:9090}
       - LOG_LEVEL=info
       - SWAGGER_ENABLED=false
+      # ── Поэтапная миграция: чтение v2 и ID-генератор выключены до проверки ──
+      - CHANNELS_V2_READ_ENABLED=${CHANNELS_V2_READ_ENABLED:-false}
+      - DIALOG_MESSAGES_READ_ENABLED=${DIALOG_MESSAGES_READ_ENABLED:-false}
+      - IDGEN_ENABLED=${IDGEN_ENABLED:-false}
+      - USER_MIGRATION_FINALIZE=${USER_MIGRATION_FINALIZE:-true}
+      - USER_MIGRATION_DEADLINE=${USER_MIGRATION_DEADLINE:-2026-12-31T23:59:59Z}
+      - USER_MIGRATION_CHECK_INTERVAL=${USER_MIGRATION_CHECK_INTERVAL:-1h}
+      # ── MCP auth ───────────────────────────────────────────────────────────
+      - MCP_SERVICE_KEY=${MCP_SERVICE_KEY:-}
+      - MCP_SESSION_SECRET=${MCP_SESSION_SECRET:-}
+      - MCP_REQUIRE_SIGNED_SESSION=${MCP_REQUIRE_SIGNED_SESSION:-false}
       - APP_MASTER_KEY_FILE=/run/secrets/app_master_key.txt
       - NEW_APP_MASTER_KEY_FILE=/run/secrets/new_app_master_key.txt
       - APP_CONFIG_REKEY=false

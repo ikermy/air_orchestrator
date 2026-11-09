@@ -94,9 +94,11 @@ jobs:
           MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
           MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
           APP_MASTER_KEY: ${{ secrets.APP_MASTER_KEY }}
+          MCP_SERVICE_KEY: ${{ secrets.MCP_SERVICE_KEY }}
+          MCP_SESSION_SECRET: ${{ secrets.MCP_SESSION_SECRET }}
         run: |
           set -euo pipefail
-          for name in DB_USER DB_PASSWORD DOMAIN NOTIF_TG_IDS FRONTEND_ORIGIN MINIO_ROOT_PASSWORD MYSQL_ROOT_PASSWORD APP_MASTER_KEY; do
+          for name in DB_USER DB_PASSWORD DOMAIN NOTIF_TG_IDS FRONTEND_ORIGIN MINIO_ROOT_PASSWORD MYSQL_ROOT_PASSWORD APP_MASTER_KEY MCP_SERVICE_KEY MCP_SESSION_SECRET; do
             value="${!name:-}"
             if [ -n "$value" ]; then
               echo "::add-mask::$value"
@@ -170,11 +172,13 @@ jobs:
           MINIO_ROOT_PASSWORD_B64: ${{ steps.prepare.outputs.minio_root_password_b64 }}
           MYSQL_ROOT_PASSWORD_B64: ${{ steps.prepare.outputs.mysql_root_password_b64 }}
           APP_MASTER_KEY_B64: ${{ steps.prepare.outputs.app_master_key_b64 }}
+          MCP_SERVICE_KEY_B64: ${{ steps.prepare.outputs.mcp_service_key_b64 }}
+          MCP_SESSION_SECRET_B64: ${{ steps.prepare.outputs.mcp_session_secret_b64 }}
         run: |
           HOST="$(printf '%s' "$HOST" | tr -d '\r\n')"
           USERNAME="$(printf '%s' "$USERNAME" | tr -d '\r\n')"
           cat > /tmp/remote-deploy.sh <<'REMOTE'
-          set -u
+          set -euo pipefail
           cd /bot/marusia/air_orc
           echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
           mkdir -p configs/secrets envoy monitoring
@@ -205,7 +209,9 @@ jobs:
           DB_USER_DEC="$(decode "$DB_USER_B64")"
           DB_PASSWORD_DEC="$(decode "$DB_PASSWORD_B64")"
           NOTIF_TG_IDS_DEC="$(decode "$NOTIF_TG_IDS_B64")"
-          echo "deploy: DB_USER='$DB_USER_DEC' DB_PASSWORD length=${#DB_PASSWORD_DEC}"
+          MCP_SERVICE_KEY_DEC="$(decode "$MCP_SERVICE_KEY_B64")"
+          MCP_SESSION_SECRET_DEC="$(decode "$MCP_SESSION_SECRET_B64")"
+          echo "deploy: DB_USER='$DB_USER_DEC' DB_PASSWORD length=${#DB_PASSWORD_DEC} MCP_SERVICE_KEY length=${#MCP_SERVICE_KEY_DEC} MCP_SESSION_SECRET length=${#MCP_SESSION_SECRET_DEC}"
           {
             printf 'DOCKER_IMAGE=%s\n' "$REGISTRY/$REPO_OWNER/airorc:$GIT_SHA"
             printf 'DOCKER_IMAGE_ALIAS=%s\n' "$REGISTRY/$REPO_OWNER/airorc:prod"
@@ -213,6 +219,8 @@ jobs:
             printf 'DB_USER='; printf '%s' "$DB_USER_DEC"; printf '\n'
             printf 'DB_PASSWORD='; printf '%s' "$DB_PASSWORD_DEC"; printf '\n'
             printf 'NOTIF_TG_IDS='; printf '%s' "$NOTIF_TG_IDS_DEC"; printf '\n'
+            printf 'MCP_SERVICE_KEY='; printf '%s' "$MCP_SERVICE_KEY_DEC"; printf '\n'
+            printf 'MCP_SESSION_SECRET='; printf '%s' "$MCP_SESSION_SECRET_DEC"; printf '\n'
           } > configs/.env
           chmod 600 configs/.env
 
@@ -243,7 +251,7 @@ jobs:
 
           for i in $(seq 1 5); do
             if ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i ~/.ssh/id_deploy "$USERNAME@$HOST" \
-                "GH_TOKEN='$GH_TOKEN' ACTOR='$ACTOR' REGISTRY='$REGISTRY' REPO_OWNER='$REPO_OWNER' GIT_SHA='$GIT_SHA' DOMAIN_B64='$DOMAIN_B64' DB_USER_B64='$DB_USER_B64' DB_PASSWORD_B64='$DB_PASSWORD_B64' NOTIF_TG_IDS_B64='$NOTIF_TG_IDS_B64' FRONTEND_ORIGIN_B64='$FRONTEND_ORIGIN_B64' MINIO_ROOT_PASSWORD_B64='$MINIO_ROOT_PASSWORD_B64' MYSQL_ROOT_PASSWORD_B64='$MYSQL_ROOT_PASSWORD_B64' APP_MASTER_KEY_B64='$APP_MASTER_KEY_B64' bash -s" < /tmp/remote-deploy.sh; then
+                "GH_TOKEN='$GH_TOKEN' ACTOR='$ACTOR' REGISTRY='$REGISTRY' REPO_OWNER='$REPO_OWNER' GIT_SHA='$GIT_SHA' DOMAIN_B64='$DOMAIN_B64' DB_USER_B64='$DB_USER_B64' DB_PASSWORD_B64='$DB_PASSWORD_B64' NOTIF_TG_IDS_B64='$NOTIF_TG_IDS_B64' FRONTEND_ORIGIN_B64='$FRONTEND_ORIGIN_B64' MINIO_ROOT_PASSWORD_B64='$MINIO_ROOT_PASSWORD_B64' MYSQL_ROOT_PASSWORD_B64='$MYSQL_ROOT_PASSWORD_B64' APP_MASTER_KEY_B64='$APP_MASTER_KEY_B64' MCP_SERVICE_KEY_B64='$MCP_SERVICE_KEY_B64' MCP_SESSION_SECRET_B64='$MCP_SESSION_SECRET_B64' bash -s" < /tmp/remote-deploy.sh; then
               echo "deploy OK (attempt $i)"
               exit 0
             fi
