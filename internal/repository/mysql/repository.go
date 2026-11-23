@@ -2,8 +2,6 @@ package mysql
 
 import (
 	"context"
-	"os"
-	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/ikermy/air-common/v2/pkg/com"
@@ -36,9 +34,11 @@ func New(parent context.Context) (*Implementation, error) {
 	}
 	base.SetIDGen(gen.Next)
 	return &Implementation{
-		DB:                    base,
-		IDGen:                 gen,
-		IDGenEnabled:          strings.EqualFold(os.Getenv("IDGEN_ENABLED"), "true"),
-		ChannelsV2ReadEnabled: strings.EqualFold(os.Getenv("CHANNELS_V2_READ_ENABLED"), "true"),
+		DB:    base,
+		IDGen: gen,
+		// Новые пути включены по умолчанию. Легаси-код оставлен как аварийный
+		// откат через предыдущий релиз, а не через env-флаг.
+		IDGenEnabled:          true,
+		ChannelsV2ReadEnabled: true,
 	}, nil
 }

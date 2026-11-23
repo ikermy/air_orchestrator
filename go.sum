@@ -111,8 +111,8 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 h1:/Tnpcb2E0Pz/tN9s3bfEY2Q8ePCEX9iuS+cneUwncnw=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0/go.mod h1:zOBXOsUaBSjKgmH4OGzV1esUpR3oUSCPYVd2cUBjKYY=
-github.com/ikermy/air-common/v2 v2.0.3 h1:yQ6ZZIl92aGPVVDK9kP0IUvHRUhoywJ2r455HLcspvk=
-github.com/ikermy/air-common/v2 v2.0.3/go.mod h1:1LABO4qVDZMzMJ6Vf9UrNPan6iL2Wwus81QfE2VSWLg=
+github.com/ikermy/air-common/v2 v2.0.4 h1:ZoOhH1WoQjh2xUDVH8UNNMYrAW+4GSEW6F68sh04Las=
+github.com/ikermy/air-common/v2 v2.0.4/go.mod h1:xRsyQjbUfgxWX1QvMq8HXSo5vk1uuNLoj6/Mmx0nvxo=
 github.com/ikermy/air-logger/v2 v2.1.5 h1:KNz7SfR3xKGIxy3jzu+43SLOmGj5nsJP2K4osGK/emY=
 github.com/ikermy/air-logger/v2 v2.1.5/go.mod h1:n1nmxORKJCRbUUJA+0X0G39aMo6wdsRXNv9+6dkLXjc=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=

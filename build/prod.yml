@@ -27,12 +27,11 @@ services:
       - GRPC_PORT=50051
       - WHATSAPP_CALLS_GRPC_ADDR=${WHATSAPP_CALLS_GRPC_ADDR:-whatsbot:9090}
       - TELEGRAM_CALLS_GRPC_ADDR=${TELEGRAM_CALLS_GRPC_ADDR:-tguserbot:9090}
+      - NODE_ID=${NODE_ID:-1}
+      - SHARD_ID=${SHARD_ID:-0}
       - LOG_LEVEL=info
       - SWAGGER_ENABLED=false
       # ── Поэтапная миграция: чтение v2 и ID-генератор выключены до проверки ──
-      - CHANNELS_V2_READ_ENABLED=${CHANNELS_V2_READ_ENABLED:-false}
-      - DIALOG_MESSAGES_READ_ENABLED=${DIALOG_MESSAGES_READ_ENABLED:-false}
-      - IDGEN_ENABLED=${IDGEN_ENABLED:-false}
       - USER_MIGRATION_FINALIZE=${USER_MIGRATION_FINALIZE:-true}
       - USER_MIGRATION_DEADLINE=${USER_MIGRATION_DEADLINE:-2026-12-31T23:59:59Z}
       - USER_MIGRATION_CHECK_INTERVAL=${USER_MIGRATION_CHECK_INTERVAL:-1h}
@@ -86,6 +85,23 @@ services:
     networks:
       - app_internal
       - air_shared
+
+  # Отдаёт ACME HTTP-01 challenge для certbot (webroot), который продлевает
+  # сертификаты на хосте по systemd-таймеру. Envoy проксирует сюда
+  # /.well-known/acme-challenge/ (см. envoy.prod.yaml, кластер acme_http).
+  acme_http:
+    image: nginx:1.27-alpine
+    container_name: airorc_acme_http
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
+    volumes:
+      - /var/www/certbot:/usr/share/nginx/html:ro
+    networks:
+      - app_internal
 
 
 networks:
