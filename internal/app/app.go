@@ -276,10 +276,13 @@ func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) 
 
 	var g *grpc.Server
 	var callsProxy *grpc.CallsProxy
-	if svcKey == "" {
-		logger.Warn("App: svc.service_key не задан — gRPC ConfigService не запущен. Используйте POST /dev/generatesvckey")
+	airGRPCEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("AIR_GRPC_ENABLED")), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("AIR_GRPC_ENABLED")), "true")
+	if svcKey == "" && !airGRPCEnabled {
+		logger.Warn("App: svc.service_key не задан — gRPC ConfigService не запущен. " +
+			"Используйте POST /dev/generatesvckey или AIR_GRPC_ENABLED=1 для data-plane air.v1")
 	} else {
-		g, err = grpc.New(d, x, svcKey, grpcPort)
+		g, err = grpc.New(d, x, svcKey, grpcPort, &grpc.AirDeps{DB: d, Model: m})
 		if err != nil {
 			logger.Fatal("Ошибка запуска gRPC сервера: %v", err)
 		}

@@ -364,6 +364,7 @@ func (w *Web) Handler() error {
 	w.embeddingRoutes(v1)
 	w.operatorRoutes(v1)
 	w.servicesRoutes(v1)
+	w.airRoutes(v1)
 	w.devRoutes(v1)
 	w.webSocketRoutes(v1)
 	w.crmRoutes(v1)
@@ -689,6 +690,34 @@ func (w *Web) servicesRoutes(v1 *gin.RouterGroup) {
 	lead := v1.Group("/services/lead")
 	lead.Use(w.authAllowMiddleware())
 	lead.Any("/*path", w.proxyServicesRequest)
+}
+
+// airRoutes — air_phantom: enrollment, устройства, сессии и состояние.
+func (w *Web) airRoutes(v1 *gin.RouterGroup) {
+	air := v1.Group("/air")
+
+	// Публичный обмен кода привязки на device token.
+	air.POST("/enroll", w.AirEnroll)
+
+	// Агентские ручки: авторизация по device token.
+	device := air.Group("/device")
+	device.Use(w.airDeviceAuth())
+	device.GET("/config", w.AirDeviceConfig)
+	device.POST("/heartbeat", w.AirDeviceHeartbeat)
+	device.GET("/me", w.AirDeviceMe)
+	device.POST("/forget", w.AirDeviceForget)
+
+	// Пользовательские ручки: Bearer access token.
+	user := air.Group("")
+	user.Use(w.authAllowMiddleware())
+	user.POST("/enrollment", w.AirCreateEnrollment)
+	user.POST("/device/revoke", w.AirRevokeDevice)
+	user.POST("/session", w.AirCreateSession)
+	user.POST("/session/claim", w.AirClaimSession)
+	user.POST("/session/close", w.AirCloseSession)
+	user.GET("/session/:id", w.AirSessionStatus)
+	user.GET("/state", w.AirState)
+	user.GET("/download", w.AirDownload)
 }
 
 // devRoutes — инструменты разработчика и администратора.

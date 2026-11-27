@@ -80,3 +80,5 @@ temp/
 *.iml
 out/
 /internal/delivery/grpc/proto/
+
+go.work.sum

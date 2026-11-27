@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	airv1 "github.com/ikermy/air-common/v2/gen/go/air/v1"
 	"github.com/ikermy/air-common/v2/pkg/rpc/proto"
 	"github.com/ikermy/air-logger/v2/pkg/logger"
 	"google.golang.org/grpc"
@@ -81,7 +82,7 @@ func (s *Server) RegisterCallsService(service callspb.CallsServer) {
 //   - certFile   — path to TLS server certificate (empty = plain gRPC)
 //   - keyFile    — path to TLS server key (empty = plain gRPC)
 //   - port       — listen port (e.g. "50051")
-func New(db repository.AppConfig, mkProvider ExamProvider, serviceKey, port string) (*Server, error) {
+func New(db repository.AppConfig, mkProvider ExamProvider, serviceKey, port string, air *AirDeps) (*Server, error) {
 	svc := &configServer{db: db, provider: mkProvider, serviceKey: serviceKey}
 
 	opts := []grpc.ServerOption{
@@ -94,6 +95,10 @@ func New(db repository.AppConfig, mkProvider ExamProvider, serviceKey, port stri
 
 	srv := grpc.NewServer(opts...)
 	proto.RegisterConfigServiceServer(srv, svc)
+	if air != nil && air.DB != nil {
+		airv1.RegisterAirDataServer(srv, newAirServer(air, mkProvider))
+		logger.Info("gRPC: air.v1.AirData registered (ModelStream/RealtimeStt/Relay)")
+	}
 
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -137,6 +142,10 @@ func serviceKeyInterceptor(serviceKey string, accessTokenProvider ExamProvider) 
 			}
 			return resp, err
 		}
+		if strings.HasPrefix(info.FullMethod, "/air.v1.AirData/") {
+			// air.v1 methods authenticate device/bearer inside the handler.
+			return handler(ctx, req)
+		}
 		if serviceKey == "" {
 			return nil, status.Error(codes.Unavailable, "service key not configured")
 		}
@@ -179,6 +188,10 @@ func streamAuthInterceptor(accessTokenProvider ExamProvider) grpc.StreamServerIn
 				logger.Debug("gRPC stream completed: method=%s", info.FullMethod)
 			}
 			return err
+		}
+		if strings.HasPrefix(info.FullMethod, "/air.v1.AirData/") {
+			// air.v1 methods authenticate device/bearer inside the handler.
+			return handler(srv, stream)
 		}
 		return status.Error(codes.Unauthenticated, "stream authentication is not configured")
 	}
