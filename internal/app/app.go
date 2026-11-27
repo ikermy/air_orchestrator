@@ -135,7 +135,10 @@ func New(parent context.Context, prof *profiler.Profiler, redisCfg state.Redis) 
 	}
 
 	e := endpoint.New(ctx, d)
-	m := model.NewModelRouter(ctx, d,
+	if keys := platformKeysFromEnv(); len(keys) > 0 {
+		logger.Info("Model gateway: платформенные ключи включены для %d провайдер(ов)", len(keys))
+	}
+	m := model.NewModelRouter(ctx, withPlatformKeys(d),
 		model.WithDialogSaver(e),
 		openai.NewAsRouterOption(),
 		mistral.NewAsRouterOption(),
