@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS air_device (
   ProtocolVersion INT UNSIGNED    NOT NULL DEFAULT 1,
   Capabilities    JSON            NULL,
   ConfigVersion   BIGINT UNSIGNED NOT NULL DEFAULT 1,
+  BlockedBy       CHAR(36)        NOT NULL DEFAULT '',
   LastSeenAt      DATETIME        NULL,
   LastError       VARCHAR(512)    NOT NULL DEFAULT '',
   CreatedAt       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -28,6 +28,7 @@ type AirDevice struct {
 	ProtocolVersion int
 	Capabilities    string
 	ConfigVersion   int64
+	BlockedBy       string
 	LastSeenAt      *time.Time
 	LastError       string
 	CreatedAt       time.Time
@@ -68,6 +69,16 @@ type AirHeartbeatInput struct {
 	LastError       string
 }
 
+// ErrDeviceBusy возвращается, если устройство вытеснено другим устройством
+// пользователя и не может снова стать онлайн, пока то устройство активно.
+type ErrDeviceBusy struct {
+	Blocker string
+}
+
+func (e ErrDeviceBusy) Error() string {
+	return "air heartbeat: устройство вытеснено другим устройством"
+}
+
 func airCtx(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, mode.GetSQLTimeToCancel())
 }
@@ -84,7 +95,7 @@ func scanAirDevice(sc interface {
 	err := sc.Scan(
 		&d.DeviceID, &d.UserID, &d.Name, &d.OS, &d.Arch, &d.OSVersion,
 		&d.HardwareHash, &d.TokenHash, &d.TokenPrefix, &d.Status, &d.OutputMode,
-		&d.AgentVersion, &d.ProtocolVersion, &caps, &d.ConfigVersion,
+		&d.AgentVersion, &d.ProtocolVersion, &caps, &d.ConfigVersion, &d.BlockedBy,
 		&lastSeen, &d.LastError, &d.CreatedAt, &revoked,
 	)
 	if err != nil {
@@ -106,7 +117,7 @@ func scanAirDevice(sc interface {
 
 const airDeviceColumns = `DeviceId, UserId, Name, Os, Arch, OsVersion, HardwareHash,
 	TokenHash, TokenPrefix, Status, OutputMode, AgentVersion, ProtocolVersion,
-	Capabilities, ConfigVersion, LastSeenAt, LastError, CreatedAt, RevokedAt`
+	Capabilities, ConfigVersion, BlockedBy, LastSeenAt, LastError, CreatedAt, RevokedAt`
 
 // AirCreateEnrollment создаёт одноразовый код привязки (хранится как hash).
 func (i *Implementation) AirCreateEnrollment(ctx context.Context, userID uint64, codeHash string, expiresAt time.Time) error {
@@ -230,30 +241,50 @@ func (i *Implementation) AirHeartbeat(ctx context.Context, deviceID string, in A
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var userID uint64
+	var (
+		userID    uint64
+		blockedBy string
+	)
 	if err := tx.QueryRowContext(ctx,
-		`SELECT UserId FROM air_device WHERE DeviceId = ? AND Status = 'active' FOR UPDATE`,
-		deviceID).Scan(&userID); err != nil {
+		`SELECT UserId, BlockedBy FROM air_device WHERE DeviceId = ? AND Status = 'active' FOR UPDATE`,
+		deviceID).Scan(&userID, &blockedBy); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("air heartbeat: устройство не найдено")
 		}
 		return fmt.Errorf("air heartbeat select: %w", err)
 	}
 
+	// Если это устройство вытеснено и блокирующее устройство ещё онлайн —
+	// не даём перехватить лидерство (иначе два агента будут кикать друг друга).
+	if blockedBy != "" && blockedBy != deviceID {
+		var (
+			blockerSeen   sql.NullTime
+			blockerStatus string
+		)
+		err := tx.QueryRowContext(ctx,
+			`SELECT LastSeenAt, Status FROM air_device WHERE DeviceId = ?`, blockedBy).
+			Scan(&blockerSeen, &blockerStatus)
+		if err == nil && blockerStatus == "active" && blockerSeen.Valid &&
+			time.Since(blockerSeen.Time) < 45*time.Second {
+			return ErrDeviceBusy{Blocker: blockedBy}
+		}
+	}
+
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE air_device SET
 		   AgentVersion = ?, ProtocolVersion = ?, Capabilities = ?, OutputMode = ?,
-		   LastError = ?, LastSeenAt = NOW()
+		   LastError = ?, LastSeenAt = NOW(), BlockedBy = ''
 		 WHERE DeviceId = ?`,
 		in.AgentVersion, airDefaultInt(in.ProtocolVersion, 1), airNullJSON(in.Capabilities),
 		airDefault(in.OutputMode, "both"), in.LastError, deviceID); err != nil {
 		return fmt.Errorf("air heartbeat update: %w", err)
 	}
 
-	// Один онлайн-пользователь: остальные устройства считаем offline и закрываем их сессии.
+	// Один онлайн-пользователь: остальные устройства offline и заблокированы
+	// этим устройством до тех пор, пока оно само не уйдёт offline.
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE air_device SET LastSeenAt = NULL
-		 WHERE UserId = ? AND DeviceId <> ? AND LastSeenAt IS NOT NULL`, userID, deviceID); err != nil {
+		`UPDATE air_device SET LastSeenAt = NULL, BlockedBy = ?
+		 WHERE UserId = ? AND DeviceId <> ?`, deviceID, userID, deviceID); err != nil {
 		return fmt.Errorf("air heartbeat kick devices: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,

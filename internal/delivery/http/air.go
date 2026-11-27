@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -317,6 +318,15 @@ func (w *Web) AirDeviceHeartbeat(c *gin.Context) {
 		LastError:       req.LastError,
 	}); err != nil {
 		logger.Warn("AirDeviceHeartbeat: %v", err)
+		var busy mysql.ErrDeviceBusy
+		if errors.As(err, &busy) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "another device is online",
+				"code":    "device_busy",
+				"blocker": busy.Blocker,
+			})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

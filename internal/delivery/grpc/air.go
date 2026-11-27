@@ -75,6 +75,9 @@ func (a *airServer) authDevice(ctx context.Context) (*mysql.AirDevice, error) {
 	if d == nil || d.Status != "active" {
 		return nil, status.Error(codes.Unauthenticated, "invalid device token")
 	}
+	if d.BlockedBy != "" {
+		return nil, status.Error(codes.PermissionDenied, "device is on standby")
+	}
 	return d, nil
 }
 
