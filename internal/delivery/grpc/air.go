@@ -35,6 +35,8 @@ type airServer struct {
 	model    *model.Router
 	provider ExamProvider
 	hub      *relayHub
+	modelSem *deviceSemaphore
+	sttSem   *deviceSemaphore
 }
 
 func newAirServer(deps *AirDeps, provider ExamProvider) *airServer {
@@ -43,6 +45,8 @@ func newAirServer(deps *AirDeps, provider ExamProvider) *airServer {
 		model:    deps.Model,
 		provider: provider,
 		hub:      newRelayHub(),
+		modelSem: newDeviceSemaphore(envLimit("AIR_MODEL_MAX_STREAMS_PER_DEVICE", 2)),
+		sttSem:   newDeviceSemaphore(envLimit("AIR_STT_MAX_STREAMS_PER_DEVICE", 1)),
 	}
 }
 
@@ -103,6 +107,10 @@ func (a *airServer) ModelStream(stream airv1.AirData_ModelStreamServer) error {
 	if err != nil {
 		return err
 	}
+	if !a.modelSem.acquire(dev.DeviceID) {
+		return status.Error(codes.ResourceExhausted, "too many model streams for device")
+	}
+	defer a.modelSem.release(dev.DeviceID)
 	first, err := stream.Recv()
 	if err != nil {
 		return err
@@ -167,6 +175,10 @@ func (a *airServer) RealtimeStt(stream airv1.AirData_RealtimeSttServer) error {
 	if err != nil {
 		return err
 	}
+	if !a.sttSem.acquire(dev.DeviceID) {
+		return status.Error(codes.ResourceExhausted, "too many stt streams for device")
+	}
+	defer a.sttSem.release(dev.DeviceID)
 	var (
 		start *airv1.SttStart
 		audio []byte
