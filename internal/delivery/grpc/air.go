@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"air_orchestrator/internal/db"
 	"air_orchestrator/internal/repository/mysql"
@@ -454,7 +455,7 @@ func (a *airServer) Relay(stream airv1.AirData_RelayServer) error {
 			sessionID := peer.getSession()
 			if sessionID == "" {
 				s, err := a.db.AirActiveSessionByDevice(ctx, dev.DeviceID)
-				if err == nil && s != nil {
+				if err == nil && s != nil && time.Now().Before(s.ExpiresAt) {
 					sessionID = s.SessionID
 					peer.setSession(sessionID)
 					a.hub.bindSession(dev.DeviceID, sessionID)
@@ -488,7 +489,7 @@ func (a *airServer) Watch(req *airv1.WatchRequest, stream airv1.AirData_WatchSer
 	if err != nil {
 		return status.Error(codes.Internal, "session lookup failed")
 	}
-	if s == nil || s.UserID != userID || s.Status != "active" {
+	if s == nil || s.UserID != userID || s.Status != "active" || time.Now().After(s.ExpiresAt) {
 		return status.Error(codes.PermissionDenied, "session is not active")
 	}
 
