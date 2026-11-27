@@ -78,6 +78,8 @@ services:
       - AUDIT_LOG_RETENTION=${AUDIT_LOG_RETENTION:-8760h}
       - WEBHOOK_DEDUP_RETENTION=${WEBHOOK_DEDUP_RETENTION:-168h}
     ports:
+      # REST напрямую с хоста для dev-тестов air_phantom (без TLS Envoy).
+      - "18080:8080"
       # gRPC ConfigService напрямую с хоста (для нативных клиентов, напр. air_phantom).
       - "50051:50051"
     extra_hosts:
