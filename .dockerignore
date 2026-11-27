@@ -54,3 +54,7 @@ minio-cors.json
 # Docker compose files
 *.yml
 *.yaml
+
+# Local workspace (uses ../air-common outside build context)
+go.work
+go.work.sum
