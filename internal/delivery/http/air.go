@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"air_orchestrator/internal/relay"
 	"air_orchestrator/internal/repository/mysql"
 
 	"github.com/gin-gonic/gin"
@@ -319,6 +320,8 @@ func (w *Web) AirDeviceHeartbeat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Один онлайн: вытесняем стримы других устройств пользователя.
+	relay.Default().DisconnectUserExcept(dev.UserID, dev.DeviceID)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -355,6 +358,7 @@ func (w *Web) AirDeviceForget(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
+	relay.Default().DisconnectDevice(dev.DeviceID)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -376,6 +380,7 @@ func (w *Web) AirRevokeDevice(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	relay.Default().DisconnectDevice(req.DeviceID)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
