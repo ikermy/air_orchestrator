@@ -101,18 +101,29 @@ func (w *Web) airPublicURL() string {
 	if v := strings.TrimSpace(os.Getenv("AIR_PUBLIC_URL")); v != "" {
 		return strings.TrimRight(v, "/")
 	}
-	return "https://app.example.com"
+	// QR-ссылка должна вести на реальный frontend (/air/viewer), а не на заглушку.
+	return publicWebHost()
 }
 
 func (w *Web) airAPIURL() string {
 	if v := strings.TrimSpace(os.Getenv("AIR_API_URL")); v != "" {
 		return strings.TrimRight(v, "/")
 	}
-	return "https://api.example.com"
+	return publicWebHost()
 }
 
 func (w *Web) airGRPCEndpoint() string {
-	return strings.TrimSpace(os.Getenv("AIR_GRPC_ENDPOINT"))
+	if v := strings.TrimSpace(os.Getenv("AIR_GRPC_ENDPOINT")); v != "" {
+		return v
+	}
+	host := strings.TrimPrefix(strings.TrimPrefix(publicWebHost(), "https://"), "http://")
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	if host == "" {
+		return ""
+	}
+	return host + ":50443"
 }
 
 // airDeviceAuth — авторизация агента по device token.
@@ -592,7 +603,11 @@ func (w *Web) AirState(c *gin.Context) {
 	})
 }
 
-// AirDownload возвращает информацию о последнем MSIX.
+// defaultAirArtifactURL — публичная ссылка на последний portable exe.
+// Используется, если AIR_ARTIFACT_URL не задан в окружении.
+const defaultAirArtifactURL = "https://github.com/ikermy/air_phantom/releases/latest/download/air_phantom-windows-amd64.exe"
+
+// AirDownload возвращает информацию о последнем Windows-артефакте.
 func (w *Web) AirDownload(c *gin.Context) {
 	if _, ok := getUserID(c); !ok {
 		return
@@ -602,8 +617,10 @@ func (w *Web) AirDownload(c *gin.Context) {
 	sha := strings.TrimSpace(os.Getenv("AIR_ARTIFACT_SHA256"))
 	signature := strings.TrimSpace(os.Getenv("AIR_ARTIFACT_SIGNATURE"))
 	if url == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "artifact is not published yet"})
-		return
+		url = defaultAirArtifactURL
+		if version == "" {
+			version = "latest"
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"platform":  "windows",

@@ -13,26 +13,26 @@ import (
 
 // AirDevice — зарегистрированное устройство air_phantom.
 type AirDevice struct {
-	DeviceID        string
-	UserID          uint64
-	Name            string
-	OS              string
-	Arch            string
-	OSVersion       string
-	HardwareHash    string
-	TokenHash       string
-	TokenPrefix     string
-	Status          string
-	OutputMode      string
-	AgentVersion    string
-	ProtocolVersion int
-	Capabilities    string
-	ConfigVersion   int64
-	BlockedBy       string
-	LastSeenAt      *time.Time
-	LastError       string
-	CreatedAt       time.Time
-	RevokedAt       *time.Time
+	DeviceID        string     `json:"id"`
+	UserID          uint64     `json:"-"`
+	Name            string     `json:"name"`
+	OS              string     `json:"os"`
+	Arch            string     `json:"arch"`
+	OSVersion       string     `json:"os_version"`
+	HardwareHash    string     `json:"-"`
+	TokenHash       string     `json:"-"`
+	TokenPrefix     string     `json:"-"`
+	Status          string     `json:"status"`
+	OutputMode      string     `json:"output_mode"`
+	AgentVersion    string     `json:"agent_version"`
+	ProtocolVersion int        `json:"protocol_version"`
+	Capabilities    string     `json:"capabilities"`
+	ConfigVersion   int64      `json:"config_version"`
+	BlockedBy       string     `json:"blocked_by"`
+	LastSeenAt      *time.Time `json:"last_seen"`
+	LastError       string     `json:"last_error"`
+	CreatedAt       time.Time  `json:"created_at"`
+	RevokedAt       *time.Time `json:"revoked_at"`
 }
 
 // AirSession — сессия web-viewer (телефон/планшет).
@@ -371,6 +371,41 @@ func (i *Implementation) AirRevokeDevice(ctx context.Context, userID uint64, dev
 		`UPDATE air_session SET Status = 'closed' WHERE DeviceId = ? AND Status IN ('pending','active')`,
 		deviceID)
 	return nil
+}
+
+// AirRevokeAllDevices отзывает все активные устройства пользователя и
+// закрывает их сессии. Возвращает id отозванных устройств для relay.
+func (i *Implementation) AirRevokeAllDevices(ctx context.Context, userID uint64) ([]string, error) {
+	ctx, cancel := airCtx(ctx)
+	defer cancel()
+	rows, err := i.Conn().QueryContext(ctx,
+		`SELECT DeviceId FROM air_device WHERE UserId = ? AND Status = 'active'`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("air revoke all devices select: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("air revoke all devices scan: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("air revoke all devices rows: %w", err)
+	}
+	if _, err := i.Conn().ExecContext(ctx,
+		`UPDATE air_device SET Status = 'revoked', RevokedAt = NOW(), LastSeenAt = NULL
+		 WHERE UserId = ? AND Status <> 'revoked'`, userID); err != nil {
+		return nil, fmt.Errorf("air revoke all devices: %w", err)
+	}
+	if _, err := i.Conn().ExecContext(ctx,
+		`UPDATE air_session SET Status = 'closed'
+		 WHERE UserId = ? AND Status IN ('pending','active')`, userID); err != nil {
+		return nil, fmt.Errorf("air revoke all sessions: %w", err)
+	}
+	return ids, nil
 }
 
 // AirForgetDevice отзывает устройство по device token (команда "удалить данные").

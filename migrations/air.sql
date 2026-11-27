@@ -940,7 +940,7 @@ DELIMITER ;
 CREATE TABLE IF NOT EXISTS `service` (
   `Id` int(11) NOT NULL AUTO_INCREMENT,
   `UserId` int(11) NOT NULL,
-  `ServiceType` enum('lead-haunter') NOT NULL,
+  `ServiceType` enum('lead-haunter','voice-call','phantom') NOT NULL,
   `Updated` timestamp NOT NULL DEFAULT current_timestamp(),
   `Status` enum('Created','Completed','InProgress','Error','MsgLimit','Stopped') NOT NULL DEFAULT 'Created',
   `Config` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`Config`)),

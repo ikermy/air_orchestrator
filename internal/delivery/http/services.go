@@ -2,6 +2,7 @@ package web
 
 import (
 	"air_orchestrator/internal/config"
+	"air_orchestrator/internal/relay"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -100,6 +101,20 @@ func (w *Web) DeleteService(c *gin.Context) {
 		logger.Error("'DeleteService' Ошибка парсинга JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Удаление Phantom отзывает все привязанные устройства и закрывает их сессии:
+	// сервис не должен оставлять активные device-токены после отключения.
+	if requestData.Service == "phantom" {
+		ids, revokeErr := w.db.AirRevokeAllDevices(c.Request.Context(), userId)
+		if revokeErr != nil {
+			logger.Error("'DeleteService' Ошибка отзыва устройств phantom: %v", revokeErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+		for _, id := range ids {
+			relay.Default().DisconnectDevice(id)
+		}
 	}
 
 	err := w.db.DeleteService(userId, requestData.Service)

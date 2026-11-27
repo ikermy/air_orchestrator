@@ -57,3 +57,8 @@ CREATE TABLE IF NOT EXISTS air_device_config (
   Version     BIGINT UNSIGNED NOT NULL DEFAULT 1,
   UpdatedAt   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- air_phantom is an add-on service in the dashboard service list.
+-- Keep existing enum values; re-running this ALTER is idempotent.
+ALTER TABLE `service`
+  MODIFY COLUMN `ServiceType` ENUM('lead-haunter','voice-call','phantom') NOT NULL;
