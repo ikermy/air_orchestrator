@@ -135,7 +135,7 @@ jobs:
           # копируем только реально существующие пути — иначе scp падает на stat.
           # build/ содержит Dockerfile, compose-файлы и Makefile.
           files=""
-          for f in build envoy monitoring minio-cors.json; do
+          for f in build envoy migrations monitoring minio-cors.json; do
             if [ -e "$f" ]; then
               files="$files $f"
             else
@@ -244,6 +244,26 @@ jobs:
             fi
           }
           ensure_container air_db build/air-db.yml
+
+          # Идемпотентные миграции air_phantom. MariaDB стартует не мгновенно —
+          # повторяем, пока клиент не подключится.
+          if [ -f migrations/air_phantom.sql ]; then
+            mig=0
+            for i in $(seq 1 30); do
+              if docker exec -i air_db mariadb -u"$DB_USER_DEC" -p"$DB_PASSWORD_DEC" air < migrations/air_phantom.sql 2>/tmp/air_mig.err; then
+                mig=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$mig" != "1" ]; then
+              echo "air_phantom migration failed"
+              cat /tmp/air_mig.err || true
+              exit 1
+            fi
+            echo "air_phantom migration OK"
+          fi
+
           ensure_container air_redis build/air-redis.yml
           ensure_container cadvisor build/air-mon.yml
           ensure_container airorc_victoriametrics build/air-vm.yml
