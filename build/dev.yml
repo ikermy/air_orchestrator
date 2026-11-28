@@ -32,6 +32,9 @@ services:
       # QR web-viewer в dev открывается по http://localhost (airfront слушает :80).
       - AIR_PUBLIC_URL=http://localhost
       - AIR_GRPC_ENDPOINT=localhost:50443
+      # Dev-фронт отдаёт отдельную сборку агента с зашитыми dev-адресами.
+      - AIR_ARTIFACT_URL=/downloads/air_phantom-windows-amd64-dev.exe
+      - AIR_ARTIFACT_VERSION=0.1.4-dev
       - MINIO_PUBLIC_INSECURE=true
       - MINIO_PUBLIC_PROXY=envoy:443
       - GRPC_PORT=50051
