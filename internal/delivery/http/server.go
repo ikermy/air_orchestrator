@@ -712,6 +712,7 @@ func (w *Web) airRoutes(v1 *gin.RouterGroup) {
 	user.Use(w.authAllowMiddleware())
 	user.POST("/enrollment", w.AirCreateEnrollment)
 	user.POST("/device/revoke", w.AirRevokeDevice)
+	user.POST("/device/config", w.AirUpdateDeviceConfig)
 	user.POST("/session", w.AirCreateSession)
 	user.POST("/session/claim", w.AirClaimSession)
 	user.POST("/session/close", w.AirCloseSession)

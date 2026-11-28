@@ -29,8 +29,9 @@ services:
       - NODE_ID=${NODE_ID:-1}
       - SHARD_ID=${SHARD_ID:-0}
       - REAL_URL=localhost
-      # QR web-viewer в dev открывается по http://localhost (airfront слушает :80).
-      - AIR_PUBLIC_URL=http://localhost
+      # QR web-viewer в dev открывается по публичному адресу фронта.
+      # Для телефона задайте AIR_PUBLIC_URL=http://<LAN-IP> в configs/.env.
+      - AIR_PUBLIC_URL=${AIR_PUBLIC_URL:-http://localhost}
       - AIR_GRPC_ENDPOINT=localhost:50443
       # Dev-фронт отдаёт отдельную сборку агента с зашитыми dev-адресами.
       - AIR_ARTIFACT_URL=/downloads/air_phantom-windows-amd64-dev.exe
@@ -104,6 +105,7 @@ services:
     ports:
       - "443:443"
       - "50443:50443"  # gRPC-Web endpoint for the local frontend
+      - "50444:50444"  # gRPC-Web plaintext (dev phone/tablet)
       - "3006:3006"  # Порт БД для внешнего доступа через Envoy
     volumes:
       - ../envoy/envoy.dev.yaml:/etc/envoy/envoy.yaml:ro

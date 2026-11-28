@@ -405,6 +405,75 @@ func (w *Web) AirRevokeDevice(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// AirUpdateDeviceConfig сохраняет желаемый режим вывода и базовые настройки
+// устройства. Агент применит их при следующем запуске.
+func (w *Web) AirUpdateDeviceConfig(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		DeviceID   string `json:"device_id"`
+		OutputMode string `json:"output_mode"`
+		Config     struct {
+			Hotkeys  map[string]string `json:"hotkeys"`
+			Language string            `json:"language"`
+		} `json:"config"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+		return
+	}
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	if req.DeviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id is required"})
+		return
+	}
+	switch req.OutputMode {
+	case "overlay", "web", "both":
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid output_mode"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	device, err := w.db.AirDeviceByID(ctx, req.DeviceID)
+	if err != nil {
+		logger.Error("AirUpdateDeviceConfig device: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if device == nil || device.Status != "active" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+	if device.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
+	hotkeys := req.Config.Hotkeys
+	if hotkeys == nil {
+		hotkeys = map[string]string{}
+	}
+	payload, err := json.Marshal(gin.H{
+		"output_mode": req.OutputMode,
+		"hotkeys":     hotkeys,
+		"language":    strings.TrimSpace(req.Config.Language),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if err := w.db.AirUpsertDeviceConfig(ctx, req.DeviceID, string(payload)); err != nil {
+		logger.Error("AirUpdateDeviceConfig upsert: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	_, version, _ := w.db.AirGetDeviceConfig(ctx, req.DeviceID)
+	c.JSON(http.StatusOK, gin.H{"ok": true, "config_version": version})
+}
+
 // AirCreateSession создаёт сессию web-viewer и pairing code.
 func (w *Web) AirCreateSession(c *gin.Context) {
 	userID, ok := getUserID(c)
@@ -583,13 +652,30 @@ func (w *Web) AirState(c *gin.Context) {
 
 	deviceJSON := any(nil)
 	if active != nil {
+		configRaw, configVersion, err := w.db.AirGetDeviceConfig(ctx, active.DeviceID)
+		if err != nil || configRaw == "" {
+			configRaw = "{}"
+		}
+		var configObj any
+		if err := json.Unmarshal([]byte(configRaw), &configObj); err != nil {
+			configObj = map[string]any{}
+		}
+		desiredMode := ""
+		if m, ok := configObj.(map[string]any); ok {
+			if v, ok := m["output_mode"].(string); ok {
+				desiredMode = v
+			}
+		}
 		deviceJSON = gin.H{
-			"id":          active.DeviceID,
-			"name":        active.Name,
-			"status":      active.Status,
-			"online":      online,
-			"output_mode": active.OutputMode,
-			"last_seen":   active.LastSeenAt,
+			"id":                  active.DeviceID,
+			"name":                active.Name,
+			"status":              active.Status,
+			"online":              online,
+			"output_mode":         active.OutputMode,
+			"desired_output_mode": desiredMode,
+			"config":              configObj,
+			"config_version":      configVersion,
+			"last_seen":           active.LastSeenAt,
 		}
 	}
 
