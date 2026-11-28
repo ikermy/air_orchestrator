@@ -37,7 +37,7 @@ services:
       - AIR_VIEWER_USE_LAN_IP=1
       # Dev-фронт отдаёт отдельную сборку агента с зашитыми dev-адресами.
       - AIR_ARTIFACT_URL=/downloads/air_phantom-windows-amd64-dev.exe
-      - AIR_ARTIFACT_VERSION=0.1.7-dev
+      - AIR_ARTIFACT_VERSION=0.1.8-dev
       - MINIO_PUBLIC_INSECURE=true
       - MINIO_PUBLIC_PROXY=envoy:443
       - GRPC_PORT=50051

@@ -362,7 +362,8 @@ func (w *Web) AirDeviceHeartbeat(c *gin.Context) {
 	}
 	// Один онлайн: вытесняем стримы других устройств пользователя.
 	relay.Default().DisconnectUserExcept(dev.UserID, dev.DeviceID)
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	_, configVersion, _ := w.db.AirGetDeviceConfig(c.Request.Context(), dev.DeviceID)
+	c.JSON(http.StatusOK, gin.H{"ok": true, "config_version": configVersion})
 }
 
 // AirDeviceMe возвращает данные устройства.
@@ -437,6 +438,7 @@ func (w *Web) AirUpdateDeviceConfig(c *gin.Context) {
 		Config     struct {
 			Hotkeys  map[string]string `json:"hotkeys"`
 			Language string            `json:"language"`
+			Debug    bool              `json:"debug"`
 		} `json:"config"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -479,6 +481,7 @@ func (w *Web) AirUpdateDeviceConfig(c *gin.Context) {
 		"output_mode": req.OutputMode,
 		"hotkeys":     hotkeys,
 		"language":    strings.TrimSpace(req.Config.Language),
+		"debug":       req.Config.Debug,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
