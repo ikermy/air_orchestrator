@@ -55,6 +55,18 @@ func hashDeviceToken(v string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// hashPairingCode нормализует код как в web-слое (A-Z0-9) и хеширует.
+func hashPairingCode(v string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(v) {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
 func (a *airServer) authDevice(ctx context.Context) (*mysql.AirDevice, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -339,11 +351,9 @@ func (a *airServer) Relay(stream airv1.AirData_RelayServer) error {
 }
 
 // Watch — server-streaming для web-viewer (gRPC-Web).
+// Доступен по Bearer-токену владельца сессии или по pairing code из QR-ссылки
+// (capability URL для телефона без входа в панель).
 func (a *airServer) Watch(req *airv1.WatchRequest, stream airv1.AirData_WatchServer) error {
-	userID, err := a.authBearer(stream.Context())
-	if err != nil {
-		return err
-	}
 	sessionID := req.GetSessionId()
 	if sessionID == "" {
 		return status.Error(codes.InvalidArgument, "session_id required")
@@ -352,7 +362,25 @@ func (a *airServer) Watch(req *airv1.WatchRequest, stream airv1.AirData_WatchSer
 	if err != nil {
 		return status.Error(codes.Internal, "session lookup failed")
 	}
-	if s == nil || s.UserID != userID || s.Status != "active" || time.Now().After(s.ExpiresAt) {
+	if s == nil {
+		return status.Error(codes.PermissionDenied, "session is not active")
+	}
+
+	authorized := false
+	if userID, authErr := a.authBearer(stream.Context()); authErr == nil {
+		authorized = s.UserID == userID && s.Status == "active" && time.Now().Before(s.ExpiresAt)
+	}
+	if !authorized {
+		code := strings.TrimSpace(req.GetPairingCode())
+		if code == "" {
+			return status.Error(codes.Unauthenticated, "pairing code required")
+		}
+		s, err = a.db.AirActivateSessionByCode(stream.Context(), sessionID, hashPairingCode(code))
+		if err != nil {
+			return status.Error(codes.PermissionDenied, "invalid or expired viewer link")
+		}
+	}
+	if s == nil || s.Status != "active" || time.Now().After(s.ExpiresAt) {
 		return status.Error(codes.PermissionDenied, "session is not active")
 	}
 

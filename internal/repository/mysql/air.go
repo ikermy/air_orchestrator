@@ -524,6 +524,66 @@ func (i *Implementation) AirClaimSession(ctx context.Context, userID uint64, ses
 	return &s, nil
 }
 
+// AirActivateSessionByCode активирует сессию viewer по pairing code без
+// пользовательской авторизации. Код из QR-ссылки является capability-токеном.
+func (i *Implementation) AirActivateSessionByCode(ctx context.Context, sessionID, pairingHash string) (*AirSession, error) {
+	ctx, cancel := airCtx(ctx)
+	defer cancel()
+
+	tx, err := i.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("air activate begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		s         AirSession
+		deviceID  sql.NullString
+		claimedAt sql.NullTime
+	)
+	err = tx.QueryRowContext(ctx,
+		`SELECT SessionId, UserId, DeviceId, PairingHash, Status, ExpiresAt, CreatedAt, ClaimedAt
+		   FROM air_session WHERE SessionId = ? FOR UPDATE`, sessionID).
+		Scan(&s.SessionID, &s.UserID, &deviceID, &s.PairingHash, &s.Status, &s.ExpiresAt, &s.CreatedAt, &claimedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("air activate: сессия не найдена")
+		}
+		return nil, fmt.Errorf("air activate select: %w", err)
+	}
+	if deviceID.Valid {
+		s.DeviceID = deviceID.String
+	}
+	if time.Now().After(s.ExpiresAt) {
+		return nil, fmt.Errorf("air activate: сессия истекла")
+	}
+	if s.PairingHash != pairingHash {
+		return nil, fmt.Errorf("air activate: неверный код")
+	}
+	if s.Status == "active" {
+		_ = tx.Rollback()
+		if claimedAt.Valid {
+			t := claimedAt.Time
+			s.ClaimedAt = &t
+		}
+		return &s, nil
+	}
+	if s.Status != "pending" {
+		return nil, fmt.Errorf("air activate: сессия уже использована")
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE air_session SET Status = 'active', ClaimedAt = NOW() WHERE SessionId = ?`, sessionID); err != nil {
+		return nil, fmt.Errorf("air activate update: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("air activate commit: %w", err)
+	}
+	s.Status = "active"
+	now := time.Now()
+	s.ClaimedAt = &now
+	return &s, nil
+}
+
 // AirCloseSession закрывает сессию.
 func (i *Implementation) AirCloseSession(ctx context.Context, userID uint64, sessionID string) error {
 	ctx, cancel := airCtx(ctx)
