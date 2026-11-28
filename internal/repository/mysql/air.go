@@ -19,6 +19,7 @@ type AirDevice struct {
 	OS              string     `json:"os"`
 	Arch            string     `json:"arch"`
 	OSVersion       string     `json:"os_version"`
+	LanIP           string     `json:"lan_ip"`
 	HardwareHash    string     `json:"-"`
 	TokenHash       string     `json:"-"`
 	TokenPrefix     string     `json:"-"`
@@ -53,6 +54,7 @@ type AirEnrollInput struct {
 	OS              string
 	Arch            string
 	OSVersion       string
+	LanIP           string
 	HardwareHash    string
 	AgentVersion    string
 	ProtocolVersion int
@@ -66,6 +68,7 @@ type AirHeartbeatInput struct {
 	ProtocolVersion int
 	Capabilities    string
 	OutputMode      string
+	LanIP           string
 	LastError       string
 }
 
@@ -93,7 +96,7 @@ func scanAirDevice(sc interface {
 		caps     sql.NullString
 	)
 	err := sc.Scan(
-		&d.DeviceID, &d.UserID, &d.Name, &d.OS, &d.Arch, &d.OSVersion,
+		&d.DeviceID, &d.UserID, &d.Name, &d.OS, &d.Arch, &d.OSVersion, &d.LanIP,
 		&d.HardwareHash, &d.TokenHash, &d.TokenPrefix, &d.Status, &d.OutputMode,
 		&d.AgentVersion, &d.ProtocolVersion, &caps, &d.ConfigVersion, &d.BlockedBy,
 		&lastSeen, &d.LastError, &d.CreatedAt, &revoked,
@@ -115,8 +118,9 @@ func scanAirDevice(sc interface {
 	return &d, nil
 }
 
-const airDeviceColumns = `DeviceId, UserId, Name, Os, Arch, OsVersion, HardwareHash,
-	TokenHash, TokenPrefix, Status, OutputMode, AgentVersion, ProtocolVersion,
+const airDeviceColumns = `DeviceId, UserId, Name, Os, Arch, OsVersion, LanIP, HardwareHash,
+	TokenHash, TokenPrefix, Status, OutputMode,
+	AgentVersion, ProtocolVersion,
 	Capabilities, ConfigVersion, BlockedBy, LastSeenAt, LastError, CreatedAt, RevokedAt`
 
 // AirCreateEnrollment создаёт одноразовый код привязки (хранится как hash).
@@ -273,10 +277,11 @@ func (i *Implementation) AirHeartbeat(ctx context.Context, deviceID string, in A
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE air_device SET
 		   AgentVersion = ?, ProtocolVersion = ?, Capabilities = ?, OutputMode = ?,
+		   LanIP = COALESCE(NULLIF(?, ''), LanIP),
 		   LastError = ?, LastSeenAt = NOW(), BlockedBy = ''
 		 WHERE DeviceId = ?`,
 		in.AgentVersion, airDefaultInt(in.ProtocolVersion, 1), airNullJSON(in.Capabilities),
-		airDefault(in.OutputMode, "both"), in.LastError, deviceID); err != nil {
+		airDefault(in.OutputMode, "both"), in.LanIP, in.LastError, deviceID); err != nil {
 		return fmt.Errorf("air heartbeat update: %w", err)
 	}
 

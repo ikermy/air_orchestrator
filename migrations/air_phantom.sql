@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS air_device (
   Os              ENUM('windows','linux','macos') NOT NULL DEFAULT 'windows',
   Arch            ENUM('amd64','arm64')           NOT NULL DEFAULT 'amd64',
   OsVersion       VARCHAR(64)     NOT NULL DEFAULT '',
+  LanIP           VARCHAR(64)     NOT NULL DEFAULT '',
   HardwareHash    CHAR(64)        NOT NULL DEFAULT '',
   TokenHash       CHAR(64)        NOT NULL,
   TokenPrefix     VARCHAR(12)     NOT NULL DEFAULT '',
@@ -62,3 +63,7 @@ CREATE TABLE IF NOT EXISTS air_device_config (
 -- Keep existing enum values; re-running this ALTER is idempotent.
 ALTER TABLE `service`
   MODIFY COLUMN `ServiceType` ENUM('lead-haunter','voice-call','phantom') NOT NULL;
+
+-- LAN IP, который агент сообщает в heartbeat (dev web-viewer QR).
+ALTER TABLE air_device
+  ADD COLUMN IF NOT EXISTS LanIP VARCHAR(64) NOT NULL DEFAULT '' AFTER OsVersion;

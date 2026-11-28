@@ -33,9 +33,11 @@ services:
       # Для телефона задайте AIR_PUBLIC_URL=http://<LAN-IP> в configs/.env.
       - AIR_PUBLIC_URL=${AIR_PUBLIC_URL:-http://localhost}
       - AIR_GRPC_ENDPOINT=localhost:50443
+      # QR для телефона строится по LAN IP, который агент присылает в heartbeat.
+      - AIR_VIEWER_USE_LAN_IP=1
       # Dev-фронт отдаёт отдельную сборку агента с зашитыми dev-адресами.
       - AIR_ARTIFACT_URL=/downloads/air_phantom-windows-amd64-dev.exe
-      - AIR_ARTIFACT_VERSION=0.1.5-dev
+      - AIR_ARTIFACT_VERSION=0.1.6-dev
       - MINIO_PUBLIC_INSECURE=true
       - MINIO_PUBLIC_PROXY=envoy:443
       - GRPC_PORT=50051

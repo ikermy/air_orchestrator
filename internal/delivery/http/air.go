@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -95,6 +96,22 @@ func normalizeAirOutput(v string) string {
 	default:
 		return "both"
 	}
+}
+
+// airViewerBase выбирает базовый URL для QR. В dev (AIR_VIEWER_USE_LAN_IP=1)
+// используется LAN IP, который агент сообщил в heartbeat: localhost с телефона
+// недоступен. В prod — публичный адрес frontend.
+func (w *Web) airViewerBase(ctx context.Context, deviceID string) string {
+	if strings.TrimSpace(os.Getenv("AIR_VIEWER_USE_LAN_IP")) == "1" {
+		if d, err := w.db.AirDeviceByID(ctx, deviceID); err == nil && d != nil && strings.TrimSpace(d.LanIP) != "" {
+			base := "http://" + strings.TrimSpace(d.LanIP)
+			if port := strings.TrimSpace(os.Getenv("AIR_VIEWER_LAN_PORT")); port != "" {
+				base += ":" + port
+			}
+			return base
+		}
+	}
+	return w.airPublicURL()
 }
 
 func (w *Web) airPublicURL() string {
@@ -298,6 +315,7 @@ func (w *Web) AirDeviceHeartbeat(c *gin.Context) {
 		AgentVersion    string `json:"agent_version"`
 		ProtocolVersion int    `json:"protocol_version"`
 		Capabilities    any    `json:"capabilities"`
+		LanIP           string `json:"lan_ip"`
 		Outputs         struct {
 			Overlay bool `json:"overlay"`
 			Web     bool `json:"web"`
@@ -326,6 +344,7 @@ func (w *Web) AirDeviceHeartbeat(c *gin.Context) {
 		ProtocolVersion: req.ProtocolVersion,
 		Capabilities:    caps,
 		OutputMode:      mode,
+		LanIP:           strings.TrimSpace(req.LanIP),
 		LastError:       req.LastError,
 	}); err != nil {
 		logger.Warn("AirDeviceHeartbeat: %v", err)
@@ -506,7 +525,7 @@ func (w *Web) AirCreateSession(c *gin.Context) {
 		"pairing_code": code,
 		"expires_at":   expires.UTC().Format(time.RFC3339),
 		"qr_url": fmt.Sprintf("%s/air/viewer?session=%s&code=%s",
-			w.airPublicURL(), sessionID, code),
+			w.airViewerBase(c.Request.Context(), req.DeviceID), sessionID, code),
 	})
 }
 
@@ -669,6 +688,7 @@ func (w *Web) AirState(c *gin.Context) {
 		deviceJSON = gin.H{
 			"id":                  active.DeviceID,
 			"name":                active.Name,
+			"lan_ip":              active.LanIP,
 			"status":              active.Status,
 			"online":              online,
 			"output_mode":         active.OutputMode,
